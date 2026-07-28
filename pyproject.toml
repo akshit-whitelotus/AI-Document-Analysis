@@ -1,0 +1,63 @@
+[project]
+name = "ai-document-analysis"
+version = "0.1.0"
+description = "Production Ready AI Document Analysis Platform"
+requires-python = ">=3.12"
+
+dependencies = [
+
+    # FastAPI
+    "fastapi",
+    "uvicorn[standard]",
+
+    # Database
+    "sqlalchemy>=2.0",
+    "asyncpg",
+    "alembic",
+
+    # Validation
+    "pydantic>=2",
+    "pydantic-settings",
+
+    # Authentication
+    "python-jose[cryptography]",
+    "passlib[bcrypt]",
+
+    # File Upload
+    "python-multipart",
+
+    # HTTP Client
+    "httpx",
+
+    # Retry
+    "tenacity",
+
+    # PDF
+    "pymupdf",
+
+    # AI
+    "sentence-transformers",
+
+    # Vector Database
+    "faiss-cpu",
+
+    # Celery
+    "celery",
+
+    # RabbitMQ
+    "aio-pika",
+
+    # Redis
+    "redis",
+
+    # Environment
+    "python-dotenv",
+
+    # Logging
+    "structlog",
+
+    # Testing
+    "pytest",
+    "pytest-asyncio",
+
+]
