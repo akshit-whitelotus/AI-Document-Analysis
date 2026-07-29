@@ -29,7 +29,29 @@ class Settings(BaseSettings):
 
     # AI
     GEMINI_API_KEY: str = ""
+    GEMINI_MODEL:str="gemini-2.0-flash"
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+    EMBEDDING_MODEL:str = "all-MiniLM-L6-v2"
 
+    #Storage
+    UPLOAD_DIR:str="./uploads"
+    VECTOR_STORE_DIR:str="./vector_store"
+    CHUNK_SIZE:int=800
+    CHUNK_OVERLAP:int=100
+
+    #Inter-service URLs (used by gateway-service's ServiceClient)
+    AUTH_SERVICE_URL:str="http://localhost:8001"
+    DOCUMENT_SERVICE_URL:str="http://localhost:8002"
+    CHAT_SERVICE_URL:str="http://localhost:8003"
+    AI_WORKER_SERVICE_URL:str="http://localhost:8004"
+
+    #HTTP client policy (shared by every ServiceClient / LLM client)
+    HTTP_TIMEOUT_SECONDS:float =15.0
+    HTTP_MAX_RETRIES:int = 3
+
+    #Rate limiting
+    RATE_LIMIT_PER_MINUTE:int = 60
+    
     # App
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
