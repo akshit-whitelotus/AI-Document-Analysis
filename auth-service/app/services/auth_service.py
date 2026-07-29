@@ -14,7 +14,7 @@ class AuthService:
     async def register(self, data:UserCreate) -> User:
         if await self.user_repository.exists_by_email(data.email):
             raise ValidationException("A user with this email already exists")
-        user=User(full_name=data.full_name,email=data.email,passhord_hash=hash_password(data.password))
+        user=User(full_name=data.full_name,email=data.email,password_hash=hash_password(data.password))
         return await self.user_repository.create(user)
     async def login(self,data:UserLogin) -> Token:
         user = await self.user_repository.get_by_email(data.email)
