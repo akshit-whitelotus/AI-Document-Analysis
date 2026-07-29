@@ -14,7 +14,7 @@ def get_redis_pool() -> redis.ConnectionPool:
     return redis.ConnectionPool(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
-        decode_respomses=True
+        decode_responses=True
 
     )
 
