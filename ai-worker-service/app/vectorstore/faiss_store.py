@@ -70,5 +70,5 @@ _store:FaissStore | None=None
 def get_store() -> FaissStore:
     global _store
     if _store is None:
-        _store=FaissStore
+        _store=FaissStore()
     return _store
