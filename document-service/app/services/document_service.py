@@ -36,7 +36,7 @@ class DocumentService:
             filename=file.filename or f"{document_id}.pdf",
             storage_path=str(storage_path),
             content_type=file.content_type,
-            status=DocumentStatus.PENDIND.value,
+            status=DocumentStatus.PENDING.value,
         )
         document=await self.document_repository.create(document)
 
