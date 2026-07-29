@@ -17,14 +17,14 @@ class GeminiClient:
         if not settings.GEMINI_API_KEY:
             raise LLMError("GEMINI_API_KEY is not configured")
 
-        url=f"/models,{settings.GEMINI_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
+        url=f"/models/{settings.GEMINI_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
         body={"contents":[{"parts": [{"text":prompt}]}]}
 
         response=await self._client.post(url,json=body)
         data=response.json()
 
         try:
-            return data["canditates"][0]["content"]["parts"][0]["text"]
+            return data["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError,IndexError) as exc:
             raise LLMError(f"Unexpected Gemini response shape: {data}") from exc
 

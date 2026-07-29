@@ -20,10 +20,10 @@ class RAGService:
         await self._llm_client.aclose()
 
     async def answer(self,session_id:str,question:str,top_k:int) -> ChatQueryResponse:
-        search_response= await self._worker_client.post("/api/v1/internal/search",json={"query":question,"top_k":top_k})
-        results=search_response.json(["results"])
+        search_response= await self._worker_client.post("/api/v1/internal/search/",json={"query":question,"top_k":top_k})
+        results=search_response.json()["results"]
         sources=[SourceChunk(**r) for r in results]
-        context="\n\n".join(f"[{s.document_d}#{s.chunk_index}]{s.text}" for s in sources)
+        context="\n\n".join(f"[{s.document_id}#{s.chunk_index}]{s.text}" for s in sources)
 
         cache_key=prompt_cache_key(question,context)
         cached_answer=await self._cache.get(cache_key)

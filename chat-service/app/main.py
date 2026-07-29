@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from shared.exceptions.handlers import register_exceptions_handlers
+from shared.exceptions.handlers import register_exception_handlers
 
 from app.api.v1.api import api_router
 from app.core.lifespan import lifespan
@@ -18,6 +18,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
-register_exceptions_handlers(app)
+register_exception_handlers(app)
 
 app.include_router(api_router,prefix="/api/v1")
