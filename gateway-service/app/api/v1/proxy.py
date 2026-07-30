@@ -18,7 +18,7 @@ async def proxy_auth(path:str,request:Request):
     )
     return Response(content=resp.content,status_code=resp.status_code,media_type="application/json")
 
-@router.api_route("/documnets/{path:path}",methods=["GET","POST","PUT","DELETE"])
+@router.api_route("/documents/{path:path}",methods=["GET","POST","PUT","DELETE"])
 async def proxy_documents(path:str,request:Request):
     client=request.app.state.document_client
     body=await request.body()
