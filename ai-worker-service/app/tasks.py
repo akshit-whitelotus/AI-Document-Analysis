@@ -56,6 +56,10 @@ def process_document(self, document_id: str) -> None:
 def notify_document_processed(document_id:str) -> None:
     logger.info("Cleanup_expired_sessions: ran (Redis TTLs handle actual expiry)")
 
+@celery_app.task(name="cleanup_expired_sessions")
+def cleanup_expired_sessions() -> None:
+    logger.info("cleanup_expired_sessions : ran (Redis TTLs handle actual expiry)")
+
 @celery_app.task(name="reindex_pending_documents")
 def reindex_pending_documents() -> None:
     session=SessionLocal()
