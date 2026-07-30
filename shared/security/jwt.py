@@ -32,7 +32,7 @@ def create_access_token(subject:str | UUID , extra_claims:dict[str,Any] | None=N
 def create_refresh_token(subject: str | UUID) -> str :
     return _create_token(subject,timedelta(days=7),"refresh")
 
-def decode_token(token:str,expected_type:Literal["acess","refresh"] | None=None) -> dict[str,Any]:
+def decode_token(token:str,expected_type:Literal["access","refresh"] | None=None) -> dict[str,Any]:
     try:
         payload=jwt.decode(token,settings.JWT_SECRET_KEY,algorithms=[ALGORITHM])
     except JWTError as exc :
