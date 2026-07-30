@@ -14,7 +14,20 @@ class AuthService:
     async def register(self, data:UserCreate) -> User:
         if await self.user_repository.exists_by_email(data.email):
             raise ValidationException("A user with this email already exists")
-        user=User(full_name=data.full_name,email=data.email,password_hash=hash_password(data.password))
+        if await self.user_repository.exists_by_username(data.username):
+            raise ValidationException("A user with this username already exists")
+        if data.doc_id and await self.user_repository.exists_by_doc_id(data.doc_id):
+            raise ValidationException("This doc_id is already linked to another user")
+        user=User(
+            first_name=data.first_name,
+            last_name=data.last_name,
+            username=data.username,
+            email=data.email,
+            password_hash=hash_password(data.password),
+            role=data.role,
+            doc_id=data.doc_id,
+            doc_type=data.doc_type,
+        )
         return await self.user_repository.create(user)
     async def login(self,data:UserLogin) -> Token:
         user = await self.user_repository.get_by_email(data.email)
@@ -33,7 +46,7 @@ class AuthService:
 
     @staticmethod
     def _issue_tokens(user:User) -> Token:
-        extra_claims={"email":user.email,"is_superuser":user.is_superuser}
+        extra_claims={"email":user.email,"role":user.role}
         return Token (
             access_token=create_access_token(user.id,extra_claims=extra_claims),
             refresh_token=create_refresh_token(user.id)
