@@ -276,7 +276,19 @@ services:
         condition: service_started
       ai-worker-service:
         condition: service_started
-
+  frontend:
+    image: nginx:alpine
+    container_name: ai-doc-frontend
+    restart: unless-stopped
+    volumes:
+      # place the generated index.html at ./frontend/index.html - nginx
+      # serves it as a plain static file, no build step needed.
+      - ./frontend:/usr/share/nginx/html:ro
+    ports:
+      - "3000:80"
+    depends_on:
+      gateway-service:
+        condition: service_started
 volumes:
   postgres_data:
   redis_data:
