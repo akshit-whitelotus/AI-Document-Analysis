@@ -3,6 +3,7 @@ from shared.schemas.base import BaseSchema
 class SearchRequest(BaseSchema):
     query:str
     top_k: int = 5
+    document_ids: list[str] | None = None
 
 class SearchResultItem(BaseSchema):
     document_id:str

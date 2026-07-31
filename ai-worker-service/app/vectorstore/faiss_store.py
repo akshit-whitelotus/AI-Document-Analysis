@@ -49,20 +49,33 @@ class FaissStore:
             self._next_id +=len(chunks)
             self._save()
             return len(chunks)
-    def search(self,query_vector:list[float],top_k: int=5) -> list[dict]:
+    def search(self,query_vector:list[float],top_k: int=5,document_ids:list[str] | None=None) -> list[dict]:
         with _lock:
             if self.index.ntotal == 0:
                 return []
             query=np.array([query_vector],dtype=np.float32)
-            scores,ids=self.index.search(query,min(top_k,self.index.ntotal))
 
+            # FAISS's flat index has no built-in metadata filter, so when a
+            # document_ids filter is given we search the full index and filter
+            # + truncate ourselves. IndexFlatIP is an EXACT (not approximate)
+            # index, so over-fetching candidates doesn't lose recall - it's
+            # just a wider scan before we keep the top_k matching ones.
+            search_k = self.index.ntotal if document_ids else min(top_k,self.index.ntotal)
+            scores,ids=self.index.search(query,search_k)
+
+            wanted = set(document_ids) if document_ids else None
             results=[]
             for score,chunk_id in zip(scores[0],ids[0]):
                 if chunk_id == -1 :
                     continue
                 meta=self._metadata.get(int(chunk_id))
-                if meta:
-                    results.append({**meta, "score":float(score)})
+                if not meta:
+                    continue
+                if wanted is not None and meta["document_id"] not in wanted:
+                    continue
+                results.append({**meta, "score":float(score)})
+                if len(results) >= top_k:
+                    break
             return results
 
 _store:FaissStore | None=None

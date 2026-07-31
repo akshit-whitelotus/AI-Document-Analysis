@@ -8,5 +8,5 @@ router=APIRouter()
 @router.post("/",response_model=SearchResponse)
 async def search(request:SearchRequest):
     query_vector=embed_query(request.query)
-    results=get_store().search(query_vector,top_k=request.top_k)
+    results=get_store().search(query_vector,top_k=request.top_k,document_ids=request.document_ids)
     return SearchResponse(results=results)
