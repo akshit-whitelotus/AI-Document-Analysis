@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # Redis
     REDIS_HOST: str
     REDIS_PORT: int
+    REDIS_PASSWORD: str = ""
 
     # RabbitMQ
     RABBITMQ_HOST: str

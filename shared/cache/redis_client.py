@@ -14,6 +14,7 @@ def get_redis_pool() -> redis.ConnectionPool:
     return redis.ConnectionPool(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
+        password=settings.REDIS_PASSWORD or None,
         decode_responses=True
 
     )
@@ -52,4 +53,4 @@ class RateLimiter:
         if current == 1 :
             await self._redis.expire(key,self.window_seconds)
         remaining=max(self.limit-current,0)
-        return current <=self.limit,remaining
+        return current <=self.limit,remaining   
