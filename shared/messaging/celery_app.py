@@ -6,7 +6,8 @@ RABBITMQ_URL=(
     f"amqp://{settings.RABBITMQ_USER}:{settings.RABBITMQ_PASSWORD}"
     f"@{settings.RABBITMQ_HOST}:{settings.RABBITMQ_PORT}//"
 )
-REDIS_BACKEND_URL=f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/1"
+_REDIS_AUTH = f":{settings.REDIS_PASSWORD}@" if settings.REDIS_PASSWORD else ""
+REDIS_BACKEND_URL=f"redis://{_REDIS_AUTH}{settings.REDIS_HOST}:{settings.REDIS_PORT}/1"
 
 celery_app=Celery(
     "ai_document_analysis",
