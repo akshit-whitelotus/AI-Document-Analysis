@@ -18,10 +18,12 @@ dependencies = [
     # Validation
     "pydantic>=2",
     "pydantic-settings",
+    "pydantic[email]",
 
-    # Authentication
+   # Authentication
     "python-jose[cryptography]",
-    "passlib[bcrypt]",
+    "passlib[bcrypt]==1.7.4",
+    "bcrypt==4.0.1",
 
     # File Upload
     "python-multipart",
@@ -56,8 +58,11 @@ dependencies = [
     # Logging
     "structlog",
 
-    # Testing
+    "psycopg2-binary==2.9.10",
+]
+
+[project.optional-dependencies]
+dev = [
     "pytest",
     "pytest-asyncio",
-
 ]
