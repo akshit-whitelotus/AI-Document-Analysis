@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Document Q&A System</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --danger: #ef4444;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --radius: 8px;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Common Components */
+    .btn {
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .btn:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .input-field, .select-field {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 12px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .input-field:focus, .select-field:focus {
+      border-color: var(--primary);
+    }
+
+    .alert {
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      font-size: 14px;
+      display: none;
+    }
+
+    .alert-danger {
+      background-color: #fef2f2;
+      color: var(--danger);
+      border: 1px solid #fecaca;
+    }
+
+    /* Screen Management */
+    .screen {
+      display: none;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .screen.active {
+      display: flex;
+    }
+
+    /* Auth Screen */
+    #auth-screen {
+      justify-content: center;
+      align-items: center;
+    }
+
+    .auth-card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 32px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    .auth-tabs {
+      display: flex;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .auth-tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .auth-tab.active {
+      color: var(--primary);
+      border-bottom: 2px solid var(--primary);
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .form-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    /* Main Screen */
+    #main-screen {
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .app-title {
+      font-weight: 700;
+      font-size: 18px;
+    }
+
+    .main-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Left Column: Documents */
+    .docs-column {
+      width: 320px;
+      background: var(--card-bg);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+    }
+
+    .section-header {
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .search-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+      background: #f1f5f9;
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+    }
+
+    .upload-box {
+      border: 1px dashed var(--border);
+      padding: 12px;
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .doc-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .doc-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+
+    .doc-name {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .badge {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge-completed, .badge-processed { background: #dcfce7; color: #15803d; }
+    .badge-pending, .badge-processing { background: #fef3c7; color: #b45309; }
+    .badge-failed { background: #fee2e2; color: #b91c1c; }
+
+    /* Right Column: Chat */
+    .chat-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .message {
+      max-width: 70%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      background: var(--primary);
+      color: white;
+      border-bottom-right-radius: 2px;
+    }
+
+    .message.assistant {
+      align-self: flex-start;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      border-bottom-left-radius: 2px;
+    }
+
+    .cached-tag {
+      font-size: 11px;
+      color: #059669;
+      font-weight: bold;
+      margin-left: 6px;
+    }
+
+    .sources-toggle {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--primary);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .sources-list {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px border var(--border);
+      font-size: 12px;
+      display: none;
+    }
+
+    .source-item {
+      background: #f8fafc;
+      padding: 6px;
+      border-radius: 4px;
+      margin-top: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .chat-input-area {
+      background: var(--card-bg);
+      border-top: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      gap: 12px;
+    }
+
+    .chat-input-area input {
+      flex: 1;
+      margin-bottom: 0;
+    }
+
+    /* Typing Indicator */
+    .typing {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 12px 16px;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      animation: bounce 1.4s infinite ease-in-out both;
+    }
+
+    .dot:nth-child(1) { animation-delay: -0.32s; }
+    .dot:nth-child(2) { animation-delay: -0.16s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Auth Screen -->
+  <div id="auth-screen" class="screen active">
+    <div class="auth-card">
+      <div id="auth-error" class="alert alert-danger"></div>
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Login</div>
+        <div class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Register</div>
+      </div>
+
+      <!-- Login Form -->
+      <form id="form-login" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="login-email" class="input-field" required>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" class="input-field" required>
+        </div>
+        <button type="submit" class="btn" style="width: 100%; margin-top: 10px;">Sign In</button>
+      </form>
+
+      <!-- Register Form -->
+      <form id="form-register" onsubmit="handleRegister(event)" style="display: none;">
+        <div class="form-group">
+          <label>First Name</label>
+          <input type="text" id="reg-fname" class="input-field" required>
+        </div>
+        <div class="form-group">
+          <label>Last Name</label>
+          <input type="text" id="reg-lname" class="input-field" required>
+        </div>
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="reg-username" class="input-field" required>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="reg-email" class="input-field" required>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="reg-password" class="input-field" required>
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select id="reg-role" class="select-field">
+            <option value="user" selected>User</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Document ID</label>
+          <input type="text" id="reg-docid" class="input-field">
+        </div>
+        <div class="form-group">
+          <label>Document Type</label>
+          <select id="reg-doctype" class="select-field">
+            <option value="pdf">PDF</option>
+            <option value="txt">TXT</option>
+          </select>
+        </div>
+        <button type="submit" class="btn" style="width: 100%; margin-top: 10px;">Register</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Screen -->
+  <div id="main-screen" class="screen">
+    <header>
+      <div class="app-title">AI Document Q&A</div>
+      <button class="btn" style="background-color: transparent; color: var(--text-muted); border: 1px solid var(--border);" onclick="logout()">Logout</button>
+    </header>
+
+    <div class="main-container">
+      <!-- Left Column: Documents -->
+      <div class="docs-column">
+        <div class="section-header">Your Documents</div>
+        <div class="search-hint" id="search-hint">Searching: All documents</div>
+        
+        <div class="upload-box">
+          <input type="file" id="file-upload-input" style="font-size: 12px;">
+          <button class="btn" onclick="uploadDocument()">Upload File</button>
+        </div>
+
+        <div id="docs-error" class="alert alert-danger"></div>
+        <div class="doc-list" id="doc-list">
+          <!-- Documents populate here -->
+        </div>
+      </div>
+
+      <!-- Right Column: Chat -->
+      <div class="chat-column">
+        <div class="chat-messages" id="chat-messages">
+          <!-- Chat messages populate here -->
+        </div>
+
+        <form class="chat-input-area" onsubmit="handleSendQuery(event)">
+          <input type="text" id="chat-input" class="input-field" placeholder="Ask a question about your documents..." required autocomplete="off">
+          <button type="submit" class="btn" id="send-btn">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "http://localhost:8000";
+    let token = localStorage.getItem("access_token") || null;
+    let selectedDocIds = new Set();
+    let sessionId = crypto.randomUUID();
+
+    // Initialization
+    window.addEventListener("DOMContentLoaded", () => {
+      if (token) {
+        showMainScreen();
+      } else {
+        showAuthScreen();
+      }
+    });
+
+    // Navigation & UI Switches
+    function showAuthScreen() {
+      document.getElementById("auth-screen").classList.add("active");
+      document.getElementById("main-screen").classList.remove("active");
+    }
+
+    function showMainScreen() {
+      document.getElementById("auth-screen").classList.remove("active");
+      document.getElementById("main-screen").classList.add("active");
+      fetchDocuments();
+    }
+
+    function switchAuthTab(tab) {
+      clearAuthError();
+      document.getElementById("tab-login").classList.toggle("active", tab === 'login');
+      document.getElementById("tab-register").classList.toggle("active", tab === 'register');
+      document.getElementById("form-login").style.display = tab === 'login' ? 'block' : 'none';
+      document.getElementById("form-register").style.display = tab === 'register' ? 'block' : 'none';
+    }
+
+    function showAuthError(msg) {
+      const el = document.getElementById("auth-error");
+      el.innerText = msg;
+      el.style.display = "block";
+    }
+
+    function clearAuthError() {
+      const el = document.getElementById("auth-error");
+      el.innerText = "";
+      el.style.display = "none";
+    }
+
+    // Helper for API Calls
+    async function apiFetch(endpoint, options = {}) {
+      options.headers = options.headers || {};
+      if (token) {
+        options.headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}${endpoint}`, options);
+        
+        if (response.status === 401) {
+          logout("Session expired. Please log in again.");
+          throw new Error("Unauthorized");
+        }
+
+        const data = await response.json().catch(() => ({}));
+        
+        if (!response.ok) {
+          const detail = data.detail || data.message || `Error ${response.status}: Something went wrong`;
+          throw { status: response.status, detail: detail };
+        }
+
+        return data;
+      } catch (err) {
+        if (err.name === "TypeError" && err.message === "Failed to fetch") {
+          throw { detail: "Gateway unreachable at http://localhost:8000. Please check CORS or if the server is running." };
+        }
+        throw err;
+      }
+    }
+
+    // Auth Handlers
+    async function handleLogin(e) {
+      e.preventDefault();
+      clearAuthError();
+      const email = document.getElementById("login-email").value.trim();
+      const password = document.getElementById("login-password").value;
+
+      try {
+        const data = await apiFetch("/api/v1/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+        
+        token = data.access_token;
+        localStorage.setItem("access_token", token);
+        showMainScreen();
+      } catch (err) {
+        showAuthError(err.detail || "Login failed");
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      clearAuthError();
+      
+      const body = {
+        first_name: document.getElementById("reg-fname").value.trim(),
+        last_name: document.getElementById("reg-lname").value.trim(),
+        username: document.getElementById("reg-username").value.trim(),
+        email: document.getElementById("reg-email").value.trim(),
+        password: document.getElementById("reg-password").value,
+        role: document.getElementById("reg-role").value,
+        doc_id: document.getElementById("reg-docid").value.trim(),
+        doc_type: document.getElementById("reg-doctype").value
+      };
+
+      try {
+        await apiFetch("/api/v1/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        
+        // Auto switch to login or auto login
+        switchAuthTab("login");
+        showAuthError("Registration successful. Please log in.");
+        document.getElementById("auth-error").className = "alert alert-danger"; // Reset styling if manipulated
+        document.getElementById("auth-error").style.color = "var(--success)";
+      } catch (err) {
+        document.getElementById("auth-error").style.color = "var(--danger)";
+        showAuthError(err.detail || "Registration failed");
+      }
+    }
+
+    function logout(reason) {
+      token = null;
+      localStorage.removeItem("access_token");
+      selectedDocIds.clear();
+      document.getElementById("chat-messages").innerHTML = "";
+      showAuthScreen();
+      if (reason) showAuthError(reason);
+    }
+
+    // Documents
+    async function fetchDocuments() {
+      const docsError = document.getElementById("docs-error");
+      docsError.style.display = "none";
+
+      try {
+        const docs = await apiFetch("/api/v1/documents/");
+        renderDocumentList(docs);
+      } catch (err) {
+        docsError.innerText = err.detail || "Failed to load documents";
+        docsError.style.display = "block";
+      }
+    }
+
+    function renderDocumentList(docs) {
+      const container = document.getElementById("doc-list");
+      container.innerHTML = "";
+
+      if (!Array.isArray(docs) || docs.length === 0) {
+        container.innerHTML = `<div style="font-size:12px; color:var(--text-muted);">No documents uploaded yet.</div>`;
+        return;
+      }
+
+      docs.forEach(doc => {
+        const item = document.createElement("div");
+        item.className = "doc-item";
+
+        const isChecked = selectedDocIds.has(doc.id);
+        const status = (doc.status || "pending").toLowerCase();
+
+        item.innerHTML = `
+          <input type="checkbox" value="${doc.id}" ${isChecked ? "checked" : ""} onchange="toggleDocSelection(this, '${doc.id}')">
+          <span class="doc-name" title="${doc.filename}">${doc.filename}</span>
+          <span class="badge badge-${status}">${status}</span>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function toggleDocSelection(checkbox, id) {
+      if (checkbox.checked) {
+        selectedDocIds.add(id);
+      } else {
+        selectedDocIds.delete(id);
+      }
+
+      const hint = document.getElementById("search-hint");
+      if (selectedDocIds.size === 0) {
+        hint.innerText = "Searching: All documents";
+      } else {
+        hint.innerText = `Searching: ${selectedDocIds.size} selected document${selectedDocIds.size > 1 ? 's' : ''}`;
+      }
+    }
+
+    async function uploadDocument() {
+      const input = document.getElementById("file-upload-input");
+      if (!input.files || input.files.length === 0) return;
+
+      const formData = new FormData();
+      formData.append("file", input.files[0]);
+
+      try {
+        await apiFetch("/api/v1/documents/", {
+          method: "POST",
+          body: formData
+        });
+        
+        input.value = "";
+        fetchDocuments();
+        
+        // Poll status every 3s for 3 times
+        let cycles = 0;
+        const interval = setInterval(() => {
+          cycles++;
+          fetchDocuments();
+          if (cycles >= 3) clearInterval(interval);
+        }, 3000);
+
+      } catch (err) {
+        alert(err.detail || "File upload failed");
+      }
+    }
+
+    // Chat Functionality
+    async function handleSendQuery(e) {
+      e.preventDefault();
+      const input = document.getElementById("chat-input");
+      const question = input.value.trim();
+      if (!question) return;
+
+      // Render User Message
+      appendMessage("user", question);
+      input.value = "";
+
+      // Render Typing Indicator
+      const typingId = appendTypingIndicator();
+
+      const docIdsArray = selectedDocIds.size > 0 ? Array.from(selectedDocIds) : null;
+
+      try {
+        const response = await apiFetch("/api/v1/chat/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: sessionId,
+            question: question,
+            top_k: 5,
+            document_ids: docIdsArray
+          })
+        });
+
+        removeMessage(typingId);
+        appendAssistantMessage(response);
+
+      } catch (err) {
+        removeMessage(typingId);
+        
+        let errorText = "Something went wrong answering that, please try again.";
+        if (err.status === 429) {
+          errorText = "I'm rate-limited right now, please try again in a moment.";
+        } else if (err.detail && err.status !== 500 && err.status !== 502) {
+          errorText = err.detail;
+        }
+
+        appendMessage("assistant", errorText);
+      }
+    }
+
+    function appendMessage(role, text) {
+      const container = document.getElementById("chat-messages");
+      const msg = document.createElement("div");
+      msg.className = `message ${role}`;
+      msg.innerText = text;
+      container.appendChild(msg);
+      container.scrollTop = container.scrollHeight;
+      return msg;
+    }
+
+    function appendTypingIndicator() {
+      const container = document.getElementById("chat-messages");
+      const msg = document.createElement("div");
+      const id = "typing-" + Date.now();
+      msg.id = id;
+      msg.className = "message assistant typing";
+      msg.innerHTML = `<div class="dot"></div><div class="dot"></div><div class="dot"></div>`;
+      container.appendChild(msg);
+      container.scrollTop = container.scrollHeight;
+      return id;
+    }
+
+    function removeMessage(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    }
+
+    function appendAssistantMessage(data) {
+      const container = document.getElementById("chat-messages");
+      const msg = document.createElement("div");
+      msg.className = "message assistant";
+
+      let html = `<div>${escapeHtml(data.answer)}`;
+      if (data.cached) {
+        html += `<span class="cached-tag">⚡ cached</span>`;
+      }
+      html += `</div>`;
+
+      if (data.sources && data.sources.length > 0) {
+        const sourcesId = "sources-" + Date.now();
+        html += `<div class="sources-toggle" onclick="toggleSources('${sourcesId}')">Show Sources (${data.sources.length})</div>`;
+        html += `<div class="sources-list" id="${sourcesId}">`;
+        
+        data.sources.forEach(src => {
+          const shortId = src.document_id ? src.document_id.substring(0, 8) : "doc";
+          html += `
+            <div class="source-item">
+              <strong>[${shortId}...] Chunk ${src.chunk_index}</strong> (Score: ${src.score ? src.score.toFixed(2) : 'N/A'})
+              <div>"${escapeHtml(src.text)}"</div>
+            </div>
+          `;
+        });
+        
+        html += `</div>`;
+      }
+
+      msg.innerHTML = html;
+      container.appendChild(msg);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function toggleSources(id) {
+      const el = document.getElementById(id);
+      if (el) {
+        const isHidden = el.style.display === "" || el.style.display === "none";
+        el.style.display = isHidden ? "block" : "none";
+      }
+    }
+
+    function escapeHtml(text) {
+      return text ? text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+    }
+  </script>
+</body>
+</html>
