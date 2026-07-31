@@ -2,7 +2,7 @@ from shared.cache.redis_client import CacheClient,SessionStore
 from shared.clients.service_client import ServiceClient
 from shared.config.settings import settings
 
-from app.schemas.chat import ChatQueryResponse,SourceChunk
+from app.schemas.chat_query import ChatQueryResponse,SourceChunk
 from app.services.llm_client import GeminiClient,prompt_cache_key
 
 
@@ -19,8 +19,11 @@ class RAGService:
         await self._worker_client.aclose()
         await self._llm_client.aclose()
 
-    async def answer(self,session_id:str,question:str,top_k:int) -> ChatQueryResponse:
-        search_response= await self._worker_client.post("/api/v1/internal/search/",json={"query":question,"top_k":top_k})
+    async def answer(self,session_id:str,question:str,top_k:int,document_ids:list[str] | None=None) -> ChatQueryResponse:
+        search_response= await self._worker_client.post(
+            "/api/v1/internal/search/",
+            json={"query":question,"top_k":top_k,"document_ids":document_ids}
+        )
         results=search_response.json()["results"]
         sources=[SourceChunk(**r) for r in results]
         context="\n\n".join(f"[{s.document_id}#{s.chunk_index}]{s.text}" for s in sources)
@@ -50,4 +53,3 @@ class RAGService:
             "If the answer isn't in the context, say you don't know.\n\n"
             f"Context:\n{context}\n\nQuestion: {question}"
         )
-    
