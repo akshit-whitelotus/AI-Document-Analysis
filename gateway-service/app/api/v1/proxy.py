@@ -7,6 +7,8 @@ def _forward_headers(request:Request) -> dict:
     headers={}
     if auth:=request.headers.get("authorization"):
         headers["authorization"] = auth
+    if content_type:=request.headers.get("content-type"):
+        headers["content-type"] = content_type
     return headers
 
 async def proxy_auth(path:str,request:Request):
@@ -33,7 +35,11 @@ async def proxy_chat(path:str ,request:Request):
     )
     return Response(content=resp.content,status_code=resp.status_code,media_type="application/json")
 
-
+# Registered per-method (instead of one api_route with methods=[...]) so each
+# method gets its own route object and therefore its own unique operationId.
+# Sharing one route across methods made FastAPI generate a single operationId
+# for all of them, which is invalid OpenAPI and made Swagger UI's "Execute"
+# collapse onto whichever method won the collision (previously always PUT).
 for _method in ("GET", "POST", "PUT", "DELETE"):
     router.add_api_route("/auth/{path:path}", proxy_auth, methods=[_method])
     router.add_api_route("/documents/{path:path}", proxy_documents, methods=[_method])
