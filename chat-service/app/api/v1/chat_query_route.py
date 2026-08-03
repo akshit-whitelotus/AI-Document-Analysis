@@ -7,4 +7,4 @@ router = APIRouter()
 @router.post("/query",response_model=ChatQueryResponse)
 async def query(request:Request,current_user:CurrentUserDep,body:ChatQueryRequest):
     rag_service=request.app.state.rag_service
-    return await rag_service.answer(body.session_id,body.question,body.top_k,body.document_ids)
+    return await rag_service.answer(body.session_id,body.question,body.top_k,str(current_user.id),body.document_ids)
