@@ -32,7 +32,7 @@ def process_document(self, document_id: str) -> None:
             raise FileNotFoundError(f"Missing chunk sidecar file: {chunks_path}")
         chunks=json.loads(chunks_path.read_text())["chunks"]
         vectors=embed_texts(chunks)
-        get_store().add(document_id,chunks,vectors)
+        get_store().add(document_id,chunks,vectors,owner_id=str(document.owner_id))
 
         document.status=DocumentStatus.PROCESSED.value
         document.chunk_count=len(chunks)

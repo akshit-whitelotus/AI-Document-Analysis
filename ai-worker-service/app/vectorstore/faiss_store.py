@@ -32,7 +32,15 @@ class FaissStore:
     def _save(self) -> None:
         faiss.write_index(self.index,str(INDEX_PATH))
         METADATA_PATH.write_text(json.dumps({"metadata":self._metadata,"next_id":self._next_id}))
-    def add(self,document_id:UUID,chunks:list[str],vectors:list[list[float]]) -> int:
+
+    def add(self,document_id:UUID,chunks:list[str],vectors:list[list[float]],owner_id:str) -> int:
+        """owner_id is REQUIRED - every indexed chunk must be tagged with the
+        document's owner so search() can enforce per-user isolation. Chunks
+        indexed without an owner_id can never be matched by search() (see
+        below), so a missing owner_id here would just make the document
+        invisible to everyone rather than leaking it - fail loudly instead."""
+        if not owner_id:
+            raise ValueError("owner_id is required when indexing a document")
         with _lock:
             if not chunks:
                 return 0
@@ -43,27 +51,36 @@ class FaissStore:
             for offset , (chunk_id,text) in enumerate(zip(ids,chunks)):
                 self._metadata[int(chunk_id)] = {
                     "document_id":str(document_id),
+                    "owner_id":str(owner_id),
                     "chunk_index":offset,
                     "text":text
                 }
             self._next_id +=len(chunks)
             self._save()
             return len(chunks)
-    def search(self,query_vector:list[float],top_k: int=5,document_ids:list[str] | None=None) -> list[dict]:
+
+    def search(self,query_vector:list[float],owner_id:str,top_k: int=5,document_ids:list[str] | None=None) -> list[dict]:
+        """owner_id is REQUIRED and always enforced - a caller can never widen
+        a search beyond their own documents, regardless of what (if anything)
+        is passed in document_ids. Legacy chunks indexed before owner_id
+        existed have no owner_id in their metadata and are excluded by
+        default (deny, not allow) rather than being treated as unowned/public."""
+        if not owner_id:
+            raise ValueError("owner_id is required for search")
         with _lock:
             if self.index.ntotal == 0:
                 return []
             query=np.array([query_vector],dtype=np.float32)
 
-            # FAISS's flat index has no built-in metadata filter, so when a
-            # document_ids filter is given we search the full index and filter
-            # + truncate ourselves. IndexFlatIP is an EXACT (not approximate)
-            # index, so over-fetching candidates doesn't lose recall - it's
-            # just a wider scan before we keep the top_k matching ones.
-            search_k = self.index.ntotal if document_ids else min(top_k,self.index.ntotal)
+            # FAISS's flat index has no built-in metadata filter, so we search
+            # the full index and filter + truncate ourselves. IndexFlatIP is
+            # an EXACT (not approximate) index, so over-fetching candidates
+            # doesn't lose recall - it's just a wider scan before we keep the
+            # top_k matching ones.
+            search_k = self.index.ntotal
             scores,ids=self.index.search(query,search_k)
 
-            wanted = set(document_ids) if document_ids else None
+            wanted_docs = set(document_ids) if document_ids else None
             results=[]
             for score,chunk_id in zip(scores[0],ids[0]):
                 if chunk_id == -1 :
@@ -71,7 +88,10 @@ class FaissStore:
                 meta=self._metadata.get(int(chunk_id))
                 if not meta:
                     continue
-                if wanted is not None and meta["document_id"] not in wanted:
+                # Hard ownership check - never optional, never skipped.
+                if meta.get("owner_id") != str(owner_id):
+                    continue
+                if wanted_docs is not None and meta["document_id"] not in wanted_docs:
                     continue
                 results.append({**meta, "score":float(score)})
                 if len(results) >= top_k:
