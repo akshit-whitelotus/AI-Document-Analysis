@@ -39,3 +39,4 @@ def mock_service_clients():
     app.state.auth_client = clients["auth_client"]
     app.state.document_client = clients["document_client"]
     app.state.chat_client = clients["chat_client"]
+    return clients
