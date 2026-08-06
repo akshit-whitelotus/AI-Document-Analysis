@@ -431,7 +431,7 @@
       <!-- Left Column: Documents -->
       <div class="docs-column">
         <div class="section-header">Your Documents</div>
-        <div class="search-hint" id="search-hint">Searching: All documents</div>
+        <div class="search-hint" id="search-hint">Select a document to ask about</div>
         
         <div class="upload-box">
           <input type="file" id="file-upload-input" style="font-size: 12px;">
@@ -462,6 +462,7 @@
     const API_BASE = "http://localhost:8000";
     let token = localStorage.getItem("access_token") || null;
     let selectedDocIds = new Set();
+    let totalDocumentsCount = 0;
     let sessionId = crypto.randomUUID();
 
     // Initialization
@@ -617,6 +618,7 @@
     function renderDocumentList(docs) {
       const container = document.getElementById("doc-list");
       container.innerHTML = "";
+      totalDocumentsCount = Array.isArray(docs) ? docs.length : 0;
 
       if (!Array.isArray(docs) || docs.length === 0) {
         container.innerHTML = `<div style="font-size:12px; color:var(--text-muted);">No documents uploaded yet.</div>`;
@@ -648,7 +650,7 @@
 
       const hint = document.getElementById("search-hint");
       if (selectedDocIds.size === 0) {
-        hint.innerText = "Searching: All documents";
+        hint.innerText = "Select a document to ask about";
       } else {
         hint.innerText = `Searching: ${selectedDocIds.size} selected document${selectedDocIds.size > 1 ? 's' : ''}`;
       }
@@ -694,10 +696,22 @@
       appendMessage("user", question);
       input.value = "";
 
+      // Guard rails - never call the backend without a document actually
+      // selected. These two cases are deliberately distinct so the user
+      // knows whether they need to upload something or just pick one.
+      if (totalDocumentsCount === 0) {
+        appendMessage("assistant", "No document is uploaded. Please upload a document first.");
+        return;
+      }
+      if (selectedDocIds.size === 0) {
+        appendMessage("assistant", "Please select a document first.");
+        return;
+      }
+
       // Render Typing Indicator
       const typingId = appendTypingIndicator();
 
-      const docIdsArray = selectedDocIds.size > 0 ? Array.from(selectedDocIds) : null;
+      const docIdsArray = Array.from(selectedDocIds);
 
       try {
         const response = await apiFetch("/api/v1/chat/query", {
