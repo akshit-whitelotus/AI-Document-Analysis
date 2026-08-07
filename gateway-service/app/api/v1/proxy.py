@@ -39,7 +39,7 @@ async def proxy_chat_stream(request:Request):
     client=request.app.state.chat_client
     body=await request.body()
     async def stream_response():
-        async with client.stream("POST","/api/v1/chat/querry/stream",content=body,headers=_forward_headers(request)) as upstream:
+        async with client.stream("POST","/api/v1/chat/query/stream",content=body,headers=_forward_headers(request)) as upstream:
             async for chunk in upstream.aiter_bytes():
                 if await request.is_disconnected():
                     break
