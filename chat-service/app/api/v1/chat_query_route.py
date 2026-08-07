@@ -13,36 +13,13 @@ async def query(request:Request,current_user:CurrentUserDep,body:ChatQueryReques
 @router.post("/query/stream")
 async def query_stream(request:Request,current_user:CurrentUserDep,body:ChatQueryRequest):
     rag_service = request.app.state.rag_service
-    async def event_generator():
-        try:
-            yield "event : start\n"
-            yield "data: {}\n\n"
-            async for token in rag_service.answer_stream(
-                session_id=body.session_id,
-                question=body.question,
-                top_k=body.top_k,
-                owner_id=str(current_user.id),
-                document_ids=body.document_ids
-            ):
-                if await request.is_disconnected():
-                    break
-                yield f"event: token\n"
-                yield (
-                    f"data: {json.dumps(token['data'],ensure_ascii=False)}\n\n"
-                )
-            yield "event: done\n"
-            yield "data: {}\n\n"
-        except Exception as exc:
-            yield "event: error\n"
-            yield (
-                f"data: {json.dumps({'message': str(exc)},ensure_ascii=False)}\n\n"
-            )
+    async def event_source():
+        async for event in rag_service.answer_stream(
+            body.session_id,body.question,body.top_k,str(current_user.id),body.document_ids
+        ):
+            yield f"data: {json.dumps(event)}\n\n"
+   
     return StreamingResponse(
-        event_generator(),
+        event_source(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection" : "keep-alive",
-            "X-Accel-Buffering" : "no"
-        }
     )
