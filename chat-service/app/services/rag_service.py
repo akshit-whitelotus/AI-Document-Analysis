@@ -48,6 +48,60 @@ class RAGService:
         await self._append_history(session_id,question,answer)
 
         return ChatQueryResponse(answer=answer,sources=sources,cached=False)
+    async def answer_stream(self,session_id:str,question:str,top_k:int,owner_id:str,document_ids: list[str] | None=None):
+        search_response=await self._worker_client.post("/api/v1/internal/search/",
+                                                       json={
+                                                           "query":question,
+                                                           "top_k":top_k,
+                                                           "document_ids":document_ids,
+                                                           "owner_id":owner_id
+                                                       })
+        results = search_response.json()["results"]
+        sources=[SourceChunk(**r) for r in results]
+        context = "\n\n".join(f"[{s.document_id}#{s.chunk_index}]{s.text}" for s in sources)
+        cache_key=prompt_cache_key(f"{owner_id}:{question}",context)
+        cached_answer=await self._cache.get(cache_key)
+
+        if cached_answer is not None:
+            chunk_size = 50
+            for i in range(0, len(cached_answer),chunk_size):
+                yield {
+                    "event":"token",
+                    "data":cached_answer[i:i + chunk_size],
+                }
+            await self._append_history(session_id,question,cached_answer)
+            yield{
+                "event": "done",
+                "data": {
+                    "cached": True,
+                    "sources":[
+                        source.model_dump()
+                        for source in sources
+                    ],
+                },
+            }
+            return
+        prompt=self._build_prompt(question,context)
+        answer_parts: list[str] = []
+        async for token in self._llm_client.stream_generate(prompt):
+            answer_parts.append(token)
+            yield {
+                "event": "token",
+                "data": token
+            }
+        answer="".join(answer_parts)
+        await self._cache.set(cache_key,answer,ttl_seconds=RESPONSE_CACHE_TTL_SECONDS)
+        await self._append_history(session_id,question,answer)
+        yield {
+            "event": "done",
+            "data": {
+                "cached":False,
+                "sources":[
+                    source.model_dump()
+                    for source in sources
+                ]
+            }
+        }
 
     async def _append_history(self,session_id:str,question:str,answer:str) -> None:
         history=await self._sessions.get(session_id) or []

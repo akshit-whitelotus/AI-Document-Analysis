@@ -1,6 +1,6 @@
 import asyncio
 import hashlib
-import httpx
+import httpx,json
 from shared.clients.service_client import ServiceClient
 from shared.config.settings import settings
 from shared.exceptions.exceptions import AppException
@@ -45,6 +45,51 @@ class GeminiClient:
             return data["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError,IndexError) as exc:
             raise LLMError(f"Unexpected Gemini response shape: {data}") from exc
+    async def stream_generate(self,prompt:str):
+        if not settings.GEMINI_API_KEY:
+            raise LLMError("GEMINI_API_KEY is not configured")
+        url=(f"/models/{settings.GEMINI_MODEL}:streamGenerateContent"
+             f"?alt=sse&key={settings.GEMINI_API_KEY}")
+        body={"contents":[{"parts": [{"text":prompt}]}]}
+        delay = 1.0
+        for attempt in range(self._MAX_RATE_LIMIT_RETRIES + 1):
+            async with self._client.stream("POST",url,json=body) as response:
+                if response.status_code == 429:
+                    if attempt == self._MAX_RATE_LIMIT_RETRIES:
+                        raise LLMRateLimitedError("Gemini Api rate limit / quota exceeded.")
+                    retry_after=response.headers.get("retry-after")
+                    wait = float(retry_after) if retry_after else delay
+                    await asyncio.sleep(wait)
+                    delay *=2
+                    continue
+                if response.status_code >=400:
+                    error=await response.aread()
+                    raise LLMError(f"Gemini API error {response.status_code}: "
+                                   f"{error.decode(errors='ignore')}")
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    if line.startswith(":"):
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if not payload:
+                        continue
+                    try:
+                        data = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    try:
+                        text=(
+                            data["candidates"][0]["content"]["parts"][0].get("text","")
+                        )
+                    except (KeyError,IndexError):
+                        continue
+                    if text:
+                        yield text
+                return
+        raise LLMError("Failed to stream GEMINI response.")
 
     async def _post_with_rate_limit_retry(self, url: str, body: dict) -> httpx.Response:
         delay = 1.0
