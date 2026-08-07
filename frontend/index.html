@@ -484,6 +484,7 @@
       document.getElementById("auth-screen").classList.remove("active");
       document.getElementById("main-screen").classList.add("active");
       fetchDocuments();
+      connectDocumentStatusSocket();
     }
 
     function switchAuthTab(tab) {
@@ -597,6 +598,7 @@
       localStorage.removeItem("access_token");
       selectedDocIds.clear();
       document.getElementById("chat-messages").innerHTML = "";
+      disconnectDocumentStatusSocket();
       showAuthScreen();
       if (reason) showAuthError(reason);
     }
@@ -636,9 +638,29 @@
           <input type="checkbox" value="${doc.id}" ${isChecked ? "checked" : ""} onchange="toggleDocSelection(this, '${doc.id}')">
           <span class="doc-name" title="${doc.filename}">${doc.filename}</span>
           <span class="badge badge-${status}">${status}</span>
+          <button type="button" class="doc-delete-btn" title="Delete document" onclick="deleteDocument('${doc.id}', '${doc.filename.replace(/'/g, "&#39;")}')">&times;</button>
         `;
         container.appendChild(item);
       });
+    }
+
+    async function deleteDocument(id, filename) {
+      if (!confirm(`Delete "${filename}"? This cannot be undone.`)) return;
+
+      try {
+        await apiFetch(`/api/v1/documents/${id}`, { method: "DELETE" });
+      } catch (err) {
+        alert(err.detail || "Failed to delete document");
+        return;
+      }
+
+      selectedDocIds.delete(id);
+      const hint = document.getElementById("search-hint");
+      hint.innerText = selectedDocIds.size === 0
+        ? "Select a document to ask about"
+        : `Searching: ${selectedDocIds.size} selected document${selectedDocIds.size > 1 ? "s" : ""}`;
+
+      await fetchDocuments();
     }
 
     function toggleDocSelection(checkbox, id) {
@@ -653,6 +675,48 @@
         hint.innerText = "Select a document to ask about";
       } else {
         hint.innerText = `Searching: ${selectedDocIds.size} selected document${selectedDocIds.size > 1 ? 's' : ''}`;
+      }
+    }
+
+    let documentStatusSocket = null;
+    let documentStatusReconnectTimer = null;
+    let documentStatusReconnectDelay = 1000;
+
+    function connectDocumentStatusSocket() {
+      if (!token) return;
+      disconnectDocumentStatusSocket();
+
+      const wsBase = API_BASE.replace(/^http/, "ws");
+      const socket = new WebSocket(`${wsBase}/api/v1/documents/ws?token=${encodeURIComponent(token)}`);
+      documentStatusSocket = socket;
+
+      socket.onopen = () => {
+        documentStatusReconnectDelay = 1000; // reset backoff on a healthy connection
+      };
+
+      socket.onmessage = () => {
+        // Any status change for any of this user's documents - simplest
+        // correct behaviour is just to refresh the list, rather than
+        // trying to patch one row's badge in place.
+        fetchDocuments();
+      };
+
+      socket.onclose = () => {
+        if (documentStatusSocket !== socket) return; // a newer connection superseded this one
+        if (!token) return; // logged out - don't reconnect
+        documentStatusReconnectTimer = setTimeout(() => {
+          connectDocumentStatusSocket();
+        }, documentStatusReconnectDelay);
+        documentStatusReconnectDelay = Math.min(documentStatusReconnectDelay * 2, 30000);
+      };
+    }
+
+    function disconnectDocumentStatusSocket() {
+      clearTimeout(documentStatusReconnectTimer);
+      if (documentStatusSocket) {
+        const socket = documentStatusSocket;
+        documentStatusSocket = null;
+        socket.close();
       }
     }
 
@@ -671,14 +735,9 @@
         
         input.value = "";
         fetchDocuments();
-        
-        // Poll status every 3s for 3 times
-        let cycles = 0;
-        const interval = setInterval(() => {
-          cycles++;
-          fetchDocuments();
-          if (cycles >= 3) clearInterval(interval);
-        }, 3000);
+        // Status updates now arrive in real time over the WebSocket
+        // connection (see connectDocumentStatusSocket) instead of being
+        // polled for - no fixed-count polling loop needed here anymore.
 
       } catch (err) {
         alert(err.detail || "File upload failed");
@@ -714,23 +773,10 @@
       const docIdsArray = Array.from(selectedDocIds);
 
       try {
-        const response = await apiFetch("/api/v1/chat/query", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_id: sessionId,
-            question: question,
-            top_k: 5,
-            document_ids: docIdsArray
-          })
-        });
-
-        removeMessage(typingId);
-        appendAssistantMessage(response);
-
+        await streamChatQuery(question, docIdsArray, typingId);
       } catch (err) {
         removeMessage(typingId);
-        
+
         let errorText = "Something went wrong answering that, please try again.";
         if (err.status === 429) {
           errorText = "I'm rate-limited right now, please try again in a moment.";
@@ -740,6 +786,119 @@
 
         appendMessage("assistant", errorText);
       }
+    }
+
+    // Streams /chat/query/stream via fetch()+ReadableStream rather than the
+    // EventSource API - EventSource can't send a custom Authorization
+    // header, and this app authenticates with a bearer token, not cookies.
+    async function streamChatQuery(question, docIdsArray, typingId) {
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const response = await fetch(`${API_BASE}/api/v1/chat/query/stream`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          question: question,
+          top_k: 5,
+          document_ids: docIdsArray
+        })
+      });
+
+      if (response.status === 401) {
+        logout("Session expired. Please log in again.");
+        throw { status: 401, detail: "Unauthorized" };
+      }
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw { status: response.status, detail: data.detail || data.message || `Error ${response.status}` };
+      }
+
+      removeMessage(typingId);
+
+      const { msgEl, textEl } = beginStreamingAssistantMessage();
+      let answerSoFar = "";
+      let buffer = "";
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE events are separated by a blank line; a chunk from the
+        // network may contain zero, one, or several complete events plus
+        // a trailing partial one, so keep the tail in buffer for next read.
+        const events = buffer.split("\n\n");
+        buffer = events.pop();
+
+        for (const rawEvent of events) {
+          const line = rawEvent.split("\n").find(l => l.startsWith("data: "));
+          if (!line) continue;
+          let event;
+          try {
+            event = JSON.parse(line.slice("data: ".length));
+          } catch {
+            continue;
+          }
+
+          if (event.type === "delta") {
+            answerSoFar += event.text;
+            textEl.innerText = answerSoFar;
+          } else if (event.type === "sources") {
+            renderStreamingSources(msgEl, event.sources);
+          } else if (event.type === "done" && event.cached) {
+            addCachedTag(textEl);
+          }
+        }
+        document.getElementById("chat-messages").scrollTop = document.getElementById("chat-messages").scrollHeight;
+      }
+    }
+
+    function beginStreamingAssistantMessage() {
+      const container = document.getElementById("chat-messages");
+      const msgEl = document.createElement("div");
+      msgEl.className = "message assistant";
+      const textEl = document.createElement("div");
+      msgEl.appendChild(textEl);
+      container.appendChild(msgEl);
+      container.scrollTop = container.scrollHeight;
+      return { msgEl, textEl };
+    }
+
+    function addCachedTag(textEl) {
+      const tag = document.createElement("span");
+      tag.className = "cached-tag";
+      tag.innerText = "⚡ cached";
+      textEl.appendChild(tag);
+    }
+
+    function renderStreamingSources(msgEl, sources) {
+      if (!sources || sources.length === 0) return;
+      const sourcesId = "sources-" + Date.now();
+
+      const toggle = document.createElement("div");
+      toggle.className = "sources-toggle";
+      toggle.innerText = `Show Sources (${sources.length})`;
+      toggle.onclick = () => toggleSources(sourcesId);
+      msgEl.appendChild(toggle);
+
+      const list = document.createElement("div");
+      list.className = "sources-list";
+      list.id = sourcesId;
+      sources.forEach(src => {
+        const shortId = src.document_id ? src.document_id.substring(0, 8) : "doc";
+        const item = document.createElement("div");
+        item.className = "source-item";
+        item.innerHTML = `
+          <strong>[${shortId}...] Chunk ${src.chunk_index}</strong> (Score: ${src.score ? src.score.toFixed(2) : 'N/A'})
+          <div>"${escapeHtml(src.text)}"</div>
+        `;
+        list.appendChild(item);
+      });
+      msgEl.appendChild(list);
     }
 
     function appendMessage(role, text) {
