@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from shared.exceptions.handlers import register_exception_handlers
 
 from app.api.v1.api import api_router
+from app.api.v1.ws_proxy import ws_router
 from app.core.lifespan import lifespan
 from app.core.rate_limit import RateLimitMiddleware
 
@@ -21,3 +22,4 @@ app.add_middleware(
 app.add_middleware(RateLimitMiddleware)
 register_exception_handlers(app)
 app.include_router(api_router,prefix="/api/v1")
+app.include_router(ws_router,prefix="/api/v1")
