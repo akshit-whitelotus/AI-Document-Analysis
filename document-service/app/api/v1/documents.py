@@ -23,3 +23,6 @@ async def list_documents(current_user:CurrentUserDep,document_service:DocumentSe
 @router.get("/{document_id}",response_model=DocumentResponse)
 async def get_document(document_id:UUID,current_user:CurrentUserDep,document_service:DocumentServiceDep):
     return await document_service.get(document_id,owner_id=current_user.id)
+@router.delete("/{document_id}",status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(document_id:UUID,current_user:CurrentUserDep,document_service:DocumentServiceDep):
+    await document_service.delete(document_id,owner_id=current_user.id)
