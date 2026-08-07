@@ -56,6 +56,6 @@ class ServiceClient:
         return await self._request("PUT",url,**kwargs)
     async def delete(self,url:str,**kwargs:Any) -> httpx.Response:
         return await self._request("DELETE",url,**kwargs)
-    def stream(self,method:str,url:str,**kwargs:Any) -> AsyncContextManager[httpx.Response]:
+    def stream(self,method:str,url:str,**kwargs:Any) :
         return self._client.stream(method,url,**kwargs)
         
