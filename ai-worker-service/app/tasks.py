@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from uuid import UUID
 
+from shared.cache.redis_client import publish_document_status
 from shared.config.settings import settings
 from shared.logger.logger import get_logger
 from shared.messaging.celery_app import celery_app
@@ -39,6 +40,11 @@ def process_document(self, document_id: str) -> None:
         session.commit()
 
         celery_app.send_task(TOPIC_DOCUMENT_PROCESSED,args=[document_id])
+        publish_document_status(str(document.owner_id),{
+            "document_id":document_id,
+            "status":DocumentStatus.PROCESSED.value,
+            "chunk_count":len(chunks),
+        })
         logger.info("process_document:completed",document_id=document_id,chunks=len(chunks))
     except Exception as exc:
         session.rollback()
@@ -47,6 +53,11 @@ def process_document(self, document_id: str) -> None:
             document.status=DocumentStatus.FAILED.value
             document.error_message=str(exc)
             session.commit()
+            publish_document_status(str(document.owner_id),{
+                "document_id":document_id,
+                "status":DocumentStatus.FAILED.value,
+                "error_message":str(exc),
+            })
         logger.error("process_document: failed",document_id=document_id,error=str(exc))
         raise self.retry(exc=exc)
     finally:

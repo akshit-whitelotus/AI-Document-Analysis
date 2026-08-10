@@ -14,3 +14,6 @@ class SearchResultItem(BaseSchema):
 
 class SearchResponse(BaseSchema):
     results:list[SearchResultItem]
+
+class DeleteDocumentResponse(BaseSchema):
+    deleted_chunks:int

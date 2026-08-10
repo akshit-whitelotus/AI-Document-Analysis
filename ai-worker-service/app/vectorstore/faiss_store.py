@@ -1,4 +1,4 @@
-import json,threading
+import json,os,threading
 from pathlib import Path
 from uuid import UUID
 import faiss
@@ -12,6 +12,12 @@ EMBEDDING_DIM=384
 
 _lock=threading.Lock()
 
+def _mtime(path:Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except FileNotFoundError:
+        return 0.0
+
 class FaissStore:
     def __init__(self):
         STORE_DIR.mkdir(parents=True,exist_ok=True)
@@ -19,6 +25,7 @@ class FaissStore:
         self._metadata:dict[int,dict]={}
         self.index=self._load_or_create_index()
         self._load_metadata()
+        self._loaded_mtimes=(_mtime(INDEX_PATH),_mtime(METADATA_PATH))
     def _load_or_create_index(self) -> faiss.Index:
         if INDEX_PATH.exists():
             return faiss.read_index(str(INDEX_PATH))
@@ -32,6 +39,23 @@ class FaissStore:
     def _save(self) -> None:
         faiss.write_index(self.index,str(INDEX_PATH))
         METADATA_PATH.write_text(json.dumps({"metadata":self._metadata,"next_id":self._next_id}))
+        self._loaded_mtimes=(_mtime(INDEX_PATH),_mtime(METADATA_PATH))
+    def _reload_if_stale(self) -> None:
+        """
+        In production, the FastAPI search process and the Celery worker
+        process (see docker-compose.yml: ai-worker-service vs.
+        ai-worker-celery-worker) are separate processes sharing the same
+        on-disk vector_store volume, each with its OWN in-memory copy of
+        this store. Without this check, a document embedded by the worker
+        after this process last loaded the index would be silently
+        invisible to every search this process serves - forever, since
+        nothing else ever refreshed it.
+        """
+        current=(_mtime(INDEX_PATH),_mtime(METADATA_PATH))
+        if current != self._loaded_mtimes:
+            self.index=self._load_or_create_index()
+            self._load_metadata()
+            self._loaded_mtimes=current
 
     def add(self,document_id:UUID,chunks:list[str],vectors:list[list[float]],owner_id:str) -> int:
         """owner_id is REQUIRED - every indexed chunk must be tagged with the
@@ -44,6 +68,7 @@ class FaissStore:
         with _lock:
             if not chunks:
                 return 0
+            self._reload_if_stale()
             ids=np.arange(self._next_id,self._next_id+len(chunks),dtype=np.int64)
             matrix=np.array(vectors,dtype=np.float32)
             self.index.add_with_ids(matrix,ids)
@@ -68,6 +93,7 @@ class FaissStore:
         if not owner_id:
             raise ValueError("owner_id is required for search")
         with _lock:
+            self._reload_if_stale()
             if self.index.ntotal == 0:
                 return []
             query=np.array([query_vector],dtype=np.float32)
@@ -97,6 +123,40 @@ class FaissStore:
                 if len(results) >= top_k:
                     break
             return results
+
+    def delete_document(self,document_id:UUID,owner_id:str) -> int:
+        """
+        Removes every indexed chunk belonging to document_id from both the
+        FAISS index (via IndexIDMap.remove_ids - O(chunks in this document),
+        not a full index rebuild) and the metadata dict, then persists.
+
+        owner_id is REQUIRED and enforced the same way search() enforces
+        it: only chunks matching BOTH document_id AND owner_id are removed.
+        document-service already checks ownership before ever calling this,
+        but a document's chunks should never have a different owner_id than
+        the document itself - if they somehow did, that's exactly the kind
+        of mismatch this check exists to catch rather than silently delete
+        across an ownership boundary.
+
+        Safe to call on a document with zero indexed chunks (e.g. one that
+        never finished processing, or was already deleted) - returns 0.
+        """
+        if not owner_id:
+            raise ValueError("owner_id is required for delete_document")
+        document_id=str(document_id)
+        with _lock:
+            self._reload_if_stale()
+            matching_ids=[
+                cid for cid,meta in self._metadata.items()
+                if meta.get("document_id") == document_id and meta.get("owner_id") == str(owner_id)
+            ]
+            if not matching_ids:
+                return 0
+            self.index.remove_ids(np.array(matching_ids,dtype=np.int64))
+            for cid in matching_ids:
+                del self._metadata[cid]
+            self._save()
+            return len(matching_ids)
 
 _store:FaissStore | None=None
 
