@@ -1,4 +1,4 @@
-from typing import Any,AsyncContextManager
+from typing import Any
 import httpx
 from tenacity import retry,retry_if_exception_type,stop_after_attempt,wait_exponential_jitter
 from shared.config.settings import settings
@@ -41,11 +41,6 @@ class ServiceClient:
                 response=response
             )
         return response
-    async def _request(self,method:str,url:str,**kwargs:Any) -> httpx.Response:
-        try:
-            return await self._send(method,url,**kwargs)
-        except (httpx.HTTPStatusError,*RETRYABLE_EXCEPTION) as exc :
-            raise UpstreamServiceError(f"Failed to reach {self._base_url}{url}: {exc}") from exc
     async def request(self,method:str,url:str,**kwargs:Any) -> httpx.Response:
         return await self._request(method,url,**kwargs)
     async def get(self,url:str,**kwargs:Any) -> httpx.Response:
@@ -56,6 +51,22 @@ class ServiceClient:
         return await self._request("PUT",url,**kwargs)
     async def delete(self,url:str,**kwargs:Any) -> httpx.Response:
         return await self._request("DELETE",url,**kwargs)
-    def stream(self,method:str,url:str,**kwargs:Any) :
+    def stream(self,method:str,url:str,**kwargs:Any):
+        """
+        Returns httpx's own streaming async context manager directly (not
+        wrapped in async def - httpx.AsyncClient.stream() already returns
+        one synchronously). Deliberately bypasses _send()'s retry logic:
+        retrying a request that's already started streaming a partial
+        response to the caller isn't safe the way retrying a buffered
+        request is, so callers get httpx's exceptions directly here rather
+        than a wrapped UpstreamServiceError.
+        """
         return self._client.stream(method,url,**kwargs)
+    async def _request(self,method:str,url:str,**kwargs:Any) -> httpx.Response:
+        try:
+            return await self._send(method,url,**kwargs)
+        except(httpx.HTTPStatusError,*RETRYABLE_EXCEPTION) as exc:
+            raise UpstreamServiceError(
+                f"Failed to reach {self._base_url}{url}: {exc}"
+            ) from exc
         
