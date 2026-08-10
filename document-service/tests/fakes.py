@@ -20,7 +20,7 @@ class FakeDocumentRepository:
 
     async def update(self, document:Document) -> Document:
         document.updated_at = datetime.now(UTC)
-        self._by_id[document.id] == document
+        self._by_id[document.id] = document
         return document
     async def list_by_owner(self,owner_id) -> list[Document]:
         return[
