@@ -71,3 +71,55 @@ async def test_answer_appends_to_session_history(rag_service_with_mocked_depende
     session_id,history = service._sessions.set.call_args.args[:2]
     assert session_id == "session-1"
     assert history[-1] == {"question":"A question","answer":"This is the answer."}
+
+
+@pytest.mark.asyncio
+async def test_answer_stream_yields_sources_then_deltas_then_done(rag_service_with_mocked_dependencies):
+    service = rag_service_with_mocked_dependencies
+    service._worker_client.post.return_value = make_search_response([SAMPLE_CHUNK])
+
+    events = [e async for e in service.answer_stream("session-1", "A question", top_k=5, owner_id="user-abc")]
+
+    assert events[0]["type"] == "sources"
+    assert events[0]["sources"][0]["document_id"] == SAMPLE_CHUNK["document_id"]
+    assert [e["type"] for e in events[1:-1]] == ["delta", "delta", "delta"]
+    assert "".join(e["text"] for e in events[1:-1]) == "This is the answer."
+    assert events[-1] == {"type": "done", "cached": False}
+
+
+@pytest.mark.asyncio
+async def test_answer_stream_caches_the_assembled_full_answer(rag_service_with_mocked_dependencies):
+    service = rag_service_with_mocked_dependencies
+    service._worker_client.post.return_value = make_search_response([])
+
+    [e async for e in service.answer_stream("session-1", "A question", top_k=5, owner_id="user-abc")]
+
+    service._cache.set.assert_awaited_once()
+    cached_value = service._cache.set.call_args.args[1]
+    assert cached_value == "This is the answer."
+
+
+@pytest.mark.asyncio
+async def test_answer_stream_uses_cache_and_skips_the_llm_entirely(rag_service_with_mocked_dependencies):
+    service = rag_service_with_mocked_dependencies
+    service._worker_client.post.return_value = make_search_response([])
+    service._cache.get.return_value = "A cached answer."
+
+    events = [e async for e in service.answer_stream("session-1", "A question", top_k=5, owner_id="user-abc")]
+
+    assert events[0]["type"] == "sources"
+    assert events[1] == {"type": "delta", "text": "A cached answer."}
+    assert events[2] == {"type": "done", "cached": True}
+    service._llm_client.generate_stream.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_answer_stream_appends_the_full_assembled_answer_to_session_history(rag_service_with_mocked_dependencies):
+    service = rag_service_with_mocked_dependencies
+    service._worker_client.post.return_value = make_search_response([])
+
+    [e async for e in service.answer_stream("session-1", "A question", top_k=5, owner_id="user-abc")]
+
+    service._sessions.set.assert_awaited_once()
+    _, history = service._sessions.set.call_args.args[:2]
+    assert history[-1] == {"question": "A question", "answer": "This is the answer."}
