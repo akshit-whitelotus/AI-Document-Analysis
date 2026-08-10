@@ -27,3 +27,7 @@ vector_store/
 .vscode/
 .idea/
 .DS_Store
+ai-worker-service/celerybeat-schedule
+.gitignore
+ai-worker-service/celerybeat-schedule-wal
+ai-worker-service/celerybeat-schedule-shm

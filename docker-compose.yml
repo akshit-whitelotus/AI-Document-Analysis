@@ -1,0 +1,297 @@
+services:
+  # ---------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------
+  postgres:
+    image: postgres:15
+    container_name: ai-doc-postgres
+    restart: unless-stopped
+    command: ["postgres", "-c", "wal_level=logical"]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ai_documents
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      # host:container - was "5433:5432" which silently pointed every
+      # locally-run process (POSTGRES_PORT=5432 in .env) at whatever
+      # Postgres happens to be listening on the HOST's port 5432
+      # instead of this container. Keeping it 5432:5432 keeps
+      # .env / .env.example / this file all in agreement.
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: ai-doc-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli","-a","${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq-celery:
+    image: rabbitmq:3-management
+    container_name: ai-doc-rabbitmq-celery
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_NODE_PORT: 5673
+    ports:
+      - "5673:5673"
+      - "15673:15672"
+    volumes:
+      - rabbitmq_celery_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------
+  # One-off DB migrations (run once, then exit)
+  # ---------------------------------------------------------------
+  auth-migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-document-analysis:latest
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq-celery
+    working_dir: /app/auth-service
+    command: sh -c "PYTHONPATH=.. alembic upgrade head"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  document-migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-document-analysis:latest
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq-celery
+    working_dir: /app/document-service
+    command: sh -c "PYTHONPATH=.. alembic upgrade head"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ---------------------------------------------------------------
+  # Application services
+  # ---------------------------------------------------------------
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-document-analysis:latest
+    container_name: ai-doc-auth-service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq-celery
+    command: uvicorn app.main:app --app-dir auth-service --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-migrate:
+        condition: service_completed_successfully
+
+  document-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-document-analysis:latest
+    container_name: ai-doc-document-service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq-celery
+      UPLOAD_DIR: /app/uploads
+      VECTOR_STORE_DIR: /app/vector_store
+    command: uvicorn app.main:app --app-dir document-service --host 0.0.0.0 --port 8002
+    ports:
+      - "8002:8002"
+    volumes:
+      - uploads_data:/app/uploads
+      - vector_store_data:/app/vector_store
+    depends_on:
+      postgres:
+        condition: service_healthy
+      document-migrate:
+        condition: service_completed_successfully
+      rabbitmq-celery:
+        condition: service_healthy
+
+  chat-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-document-analysis:latest
+    container_name: ai-doc-chat-service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq-celery
+      AUTH_SERVICE_URL: http://auth-service:8001
+      DOCUMENT_SERVICE_URL: http://document-service:8002
+      AI_WORKER_SERVICE_URL: http://ai-worker-service:8004
+    command: uvicorn app.main:app --app-dir chat-service --host 0.0.0.0 --port 8003
+    ports:
+      - "8003:8003"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  ai-worker-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-document-analysis:latest
+    container_name: ai-doc-ai-worker-service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq-celery
+      UPLOAD_DIR: /app/uploads
+      VECTOR_STORE_DIR: /app/vector_store
+    command: uvicorn app.main:app --app-dir ai-worker-service --host 0.0.0.0 --port 8004
+    ports:
+      - "8004:8004"
+    volumes:
+      - uploads_data:/app/uploads
+      - vector_store_data:/app/vector_store
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq-celery:
+        condition: service_healthy
+
+  ai-worker-celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-document-analysis:latest
+    container_name: ai-doc-ai-worker-celery-worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq-celery
+      UPLOAD_DIR: /app/uploads
+      VECTOR_STORE_DIR: /app/vector_store
+    working_dir: /app/ai-worker-service
+    command: celery -A app.celery_app worker --loglevel=info
+    volumes:
+      - uploads_data:/app/uploads
+      - vector_store_data:/app/vector_store
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq-celery:
+        condition: service_healthy
+
+  ai-worker-celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-document-analysis:latest
+    container_name: ai-doc-ai-worker-celery-beat
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq-celery
+      UPLOAD_DIR: /app/uploads
+      VECTOR_STORE_DIR: /app/vector_store
+    working_dir: /app/ai-worker-service
+    command: celery -A app.celery_app beat --loglevel=info
+    volumes:
+      - uploads_data:/app/uploads
+      - vector_store_data:/app/vector_store
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq-celery:
+        condition: service_healthy
+
+  gateway-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-document-analysis:latest
+    container_name: ai-doc-gateway-service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_HOST: redis
+      AUTH_SERVICE_URL: http://auth-service:8001
+      DOCUMENT_SERVICE_URL: http://document-service:8002
+      CHAT_SERVICE_URL: http://chat-service:8003
+      AI_WORKER_SERVICE_URL: http://ai-worker-service:8004
+    command: uvicorn app.main:app --app-dir gateway-service --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      document-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+      ai-worker-service:
+        condition: service_started
+  frontend:
+    image: nginx:alpine
+    container_name: ai-doc-frontend
+    restart: unless-stopped
+    volumes:
+      # place the generated index.html at ./frontend/index.html - nginx
+      # serves it as a plain static file, no build step needed.
+      - ./frontend:/usr/share/nginx/html:ro
+    ports:
+      - "3000:80"
+    depends_on:
+      gateway-service:
+        condition: service_started
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_celery_data:
+  uploads_data:
+  vector_store_data:
