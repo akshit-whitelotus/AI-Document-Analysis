@@ -18,22 +18,24 @@ class RAGService:
     async def aclose(self) -> None:
         await self._worker_client.aclose()
         await self._llm_client.aclose()
-    async def _search_and_build_context(self,question:str,top_k:int,owner_id:str,document_ids:list[str] | None=None) -> tuple[list[SourceChunk],str]:
+
+    async def _search_and_build_context(self,question:str,top_k:int,owner_id:str,document_ids:list[str] | None) -> tuple[list[SourceChunk],str]:
         # owner_id comes from the caller's verified JWT (see chat_query_route.py),
         # never from client-supplied input, and is always sent to the worker so
         # a request can never retrieve another user's document chunks -
         # regardless of what document_ids the client asks for.
-        search_response = await self._worker_client.post(
+        search_response= await self._worker_client.post(
             "/api/v1/internal/search/",
             json={"query":question,"top_k":top_k,"document_ids":document_ids,"owner_id":owner_id}
         )
         results=search_response.json()["results"]
         sources=[SourceChunk(**r) for r in results]
-        context ="\n\n".join(f"[{s.document_id}#{s.chunk_index}]{s.text}" for s in sources)
+        context="\n\n".join(f"[{s.document_id}#{s.chunk_index}]{s.text}" for s in sources)
         return sources,context
 
     async def answer(self,session_id:str,question:str,top_k:int,owner_id:str,document_ids:list[str] | None=None) -> ChatQueryResponse:
-        sources,context = await self._search_and_build_context(question,top_k,owner_id,document_ids)
+        sources,context=await self._search_and_build_context(question,top_k,owner_id,document_ids)
+
         # owner_id is salted into the cache key (via the question string) so
         # two different users asking the identical question never share a
         # cached answer/context. This keeps prompt_cache_key()'s signature in
@@ -50,9 +52,23 @@ class RAGService:
         await self._append_history(session_id,question,answer)
 
         return ChatQueryResponse(answer=answer,sources=sources,cached=False)
-    async def answer_stream(self,session_id:str,question:str,top_k:int,owner_id:str,document_ids: list[str] | None=None):
-        sources,context = await self._search_and_build_context(question,top_k,owner_id,document_ids)
+
+    async def answer_stream(self,session_id:str,question:str,top_k:int,owner_id:str,document_ids:list[str] | None=None):
+        """
+        Async generator yielding transport-agnostic event dicts:
+          {"type": "sources", "sources": [...]}   - once, up front
+          {"type": "delta", "text": "..."}         - zero or more times
+          {"type": "done", "cached": bool}          - once, at the end
+
+        Deliberately has no idea what SSE framing looks like - that's the
+        route layer's job (see chat_query_route.py). Same cache-key and
+        session-history side effects as answer(), just applied after the
+        full answer has been assembled from the streamed deltas rather than
+        all at once.
+        """
+        sources,context=await self._search_and_build_context(question,top_k,owner_id,document_ids)
         yield {"type":"sources","sources":[s.model_dump() for s in sources]}
+
         cache_key=prompt_cache_key(f"{owner_id}:{question}",context)
         cached_answer=await self._cache.get(cache_key)
         if cached_answer is not None:
@@ -60,6 +76,7 @@ class RAGService:
             yield {"type":"delta","text":cached_answer}
             yield {"type":"done","cached":True}
             return
+
         prompt=self._build_prompt(question,context)
         parts:list[str]=[]
         async for delta in self._llm_client.generate_stream(prompt):
@@ -70,6 +87,7 @@ class RAGService:
         await self._cache.set(cache_key,full_answer,ttl_seconds=RESPONSE_CACHE_TTL_SECONDS)
         await self._append_history(session_id,question,full_answer)
         yield {"type":"done","cached":False}
+
     async def _append_history(self,session_id:str,question:str,answer:str) -> None:
         history=await self._sessions.get(session_id) or []
         history.append({"question":question,"answer":answer})
