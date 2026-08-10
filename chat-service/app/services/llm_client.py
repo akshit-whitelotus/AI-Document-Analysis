@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
-import httpx,json
+import json
+import httpx
 from shared.clients.service_client import ServiceClient
 from shared.config.settings import settings
 from shared.exceptions.exceptions import AppException
@@ -11,6 +12,14 @@ class LLMError(AppException):
 class LLMRateLimitedError(AppException):
     """Gemini returned 429 - quota/rate limit hit after retries were exhausted."""
     status_code=429
+
+# Deliberately much more generous than shared.config.settings.HTTP_TIMEOUT_SECONDS
+# (15s, fine for ordinary request/response calls). httpx's read timeout fires
+# per chunk, not for the whole response - and a >15s gap between SSE chunks
+# (Gemini's time-to-first-token, or a pause mid-generation) is normal for a
+# streaming LLM response, not a hung connection. Using the short default
+# here was killing legitimate in-progress streams with httpx.ReadTimeout.
+_STREAM_TIMEOUT=httpx.Timeout(connect=10.0,read=120.0,write=10.0,pool=10.0)
 
 class GeminiClient:
     # Retries within a single request for transient 429s. Gemini's free-tier
@@ -45,36 +54,48 @@ class GeminiClient:
             return data["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError,IndexError) as exc:
             raise LLMError(f"Unexpected Gemini response shape: {data}") from exc
+
     async def generate_stream(self,prompt:str):
+        """
+        Yields text deltas as they arrive from Gemini's streamGenerateContent
+        endpoint (NOT generateContent - a different endpoint entirely, with
+        alt=sse to get server-sent-event framing rather than a single JSON
+        array). No rate-limit retry here, unlike generate() - retrying after
+        some deltas have already been yielded to the caller would mean the
+        caller sees the same text twice, so a 429 here is raised immediately.
+        """
         if not settings.GEMINI_API_KEY:
             raise LLMError("GEMINI_API_KEY is not configured")
-        url=(f"/models/{settings.GEMINI_MODEL}:streamGenerateContent"
-             f"?alt=sse&key={settings.GEMINI_API_KEY}")
-        body={"contents":[{"parts": [{"text":prompt}]}]}
-        async with self._client.stream("POST",url,json=body) as response:
-                if response.status_code >=400:
-                    await response.aread()
-                    try:
-                        data=response.json()
-                    except ValueError:
-                        data = response.text
-                    if response.status_code == 429:
-                        raise LLMRateLimitedError("Gemini API rate limit / quota exceeded. Please try again")
-                    raise LLMError(f"Gemini API error {response.status_code}: {data}")
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    payload = line[len("data: ")].strip()
-                    if not payload:
-                        continue
-                    try:
-                        chunk = json.loads(payload)
-                        text=chunk["candidates"][0]["content"]["parts"][0]["text"]
 
-                    except (json.JSONDecodeError,KeyError,IndexError):
-                        continue
-                    if text:
-                        yield text
+        url=f"/models/{settings.GEMINI_MODEL}:streamGenerateContent?alt=sse&key={settings.GEMINI_API_KEY}"
+        body={"contents":[{"parts": [{"text":prompt}]}]}
+
+        async with self._client.stream("POST",url,json=body,timeout=_STREAM_TIMEOUT) as response:
+            if response.status_code >= 400:
+                await response.aread()
+                try:
+                    data=response.json()
+                except ValueError:
+                    data=response.text
+                if response.status_code == 429:
+                    raise LLMRateLimitedError(
+                        "Gemini API rate limit / quota exceeded. Please try again shortly."
+                    )
+                raise LLMError(f"Gemini API error {response.status_code}: {data}")
+
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                payload=line[len("data: "):].strip()
+                if not payload:
+                    continue
+                try:
+                    chunk=json.loads(payload)
+                    text=chunk["candidates"][0]["content"]["parts"][0]["text"]
+                except (json.JSONDecodeError,KeyError,IndexError):
+                    continue
+                if text:
+                    yield text
 
     async def _post_with_rate_limit_retry(self, url: str, body: dict) -> httpx.Response:
         delay = 1.0
