@@ -131,6 +131,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      AI_WORKER_SERVICE_URL: http://ai-worker-service:8004
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       RABBITMQ_HOST: rabbitmq-celery
