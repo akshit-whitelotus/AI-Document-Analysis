@@ -33,9 +33,10 @@ def chunks_sidecar(tmp_path,monkeypatch):
 def mocked_pipeline():
     with patch.object(tasks,"embed_texts") as embed_texts, \
          patch.object(tasks,"get_store") as get_store, \
-         patch.object(tasks,"celery_app") as celery_app:
+         patch.object(tasks,"celery_app") as celery_app, \
+         patch.object(tasks,"publish_document_status") as publish_document_status:
         embed_texts.return_value = [[0.0] * 384]
-        yield {"embed_texts":embed_texts,"get_store":get_store,"celery_app":celery_app}
+        yield {"embed_texts":embed_texts,"get_store":get_store,"celery_app":celery_app,"publish_document_status":publish_document_status}
 
 def test_process_document_happy_path_indexes_with_owner_id(fake_session, chunks_sidecar, mocked_pipeline):
     session, document = fake_session
@@ -53,6 +54,10 @@ def test_process_document_happy_path_indexes_with_owner_id(fake_session, chunks_
         document_id, ["chunk one"], mocked_pipeline["embed_texts"].return_value, owner_id=str(document.owner_id)
     )
     mocked_pipeline["celery_app"].send_task.assert_called_once()
+    mocked_pipeline["publish_document_status"].assert_called_once_with(
+        str(document.owner_id),
+        {"document_id": document_id, "status": DocumentStatus.PROCESSED.value, "chunk_count": 1},
+    )
 
 def test_process_document_sets_processing_status_before_indexing(fake_session,chunks_sidecar,mocked_pipeline):
     session,document = fake_session
@@ -85,6 +90,27 @@ def test_process_document_embedding_failure_marks_document_failed(fake_session,c
         tasks.process_document.run(document_id)
     assert document.status == DocumentStatus.FAILED.value
     assert "embedding backend unreachable" in document.error_message
+    mocked_pipeline["publish_document_status"].assert_called_once_with(
+        str(document.owner_id),
+        {
+            "document_id": document_id,
+            "status": DocumentStatus.FAILED.value,
+            "error_message": "embedding backend unreachable",
+        },
+    )
+
+def test_process_document_missing_sidecar_failure_also_publishes_a_failed_status(fake_session,chunks_sidecar,mocked_pipeline):
+    session,document = fake_session
+    document_id = str(uuid4())
+    # deliberately not calling chunks_sidecar(...) - no file written
+
+    with pytest.raises(FileNotFoundError):
+        tasks.process_document.run(document_id)
+
+    mocked_pipeline["publish_document_status"].assert_called_once()
+    published_owner_id, published_payload = mocked_pipeline["publish_document_status"].call_args.args
+    assert published_owner_id == str(document.owner_id)
+    assert published_payload["status"] == DocumentStatus.FAILED.value
 
 def test_process_document_missing_document_row_is_a_noop(fake_session,mocked_pipeline):
     session, _ =fake_session
@@ -94,3 +120,4 @@ def test_process_document_missing_document_row_is_a_noop(fake_session,mocked_pip
 
     mocked_pipeline["get_store"].return_value.add.assert_not_called()
     mocked_pipeline["celery_app"].send_task.assert_not_called()
+    mocked_pipeline["publish_document_status"].assert_not_called()
