@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from uuid import UUID
+
 from shared.cache.redis_client import publish_document_status
 from shared.config.settings import settings
 from shared.logger.logger import get_logger
@@ -42,7 +43,7 @@ def process_document(self, document_id: str) -> None:
         publish_document_status(str(document.owner_id),{
             "document_id":document_id,
             "status":DocumentStatus.PROCESSED.value,
-            "chunk_count":len(chunks)
+            "chunk_count":len(chunks),
         })
         logger.info("process_document:completed",document_id=document_id,chunks=len(chunks))
     except Exception as exc:
@@ -55,7 +56,7 @@ def process_document(self, document_id: str) -> None:
             publish_document_status(str(document.owner_id),{
                 "document_id":document_id,
                 "status":DocumentStatus.FAILED.value,
-                "error_message":str(exc)
+                "error_message":str(exc),
             })
         logger.error("process_document: failed",document_id=document_id,error=str(exc))
         raise self.retry(exc=exc)
