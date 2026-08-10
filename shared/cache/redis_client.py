@@ -1,6 +1,6 @@
 import json
 from functools import lru_cache
-from typing import Any,AsyncIterator
+from typing import Any, AsyncIterator
 import redis as redis_sync
 import redis.asyncio as redis
 
@@ -23,6 +23,7 @@ def get_redis_pool() -> redis.ConnectionPool:
 
 def get_redis() -> redis.Redis:
     return redis.Redis(connection_pool=get_redis_pool())
+
 def publish_document_status(owner_id:str,payload:dict) -> None:
     """
     SYNC publish - deliberately uses the plain (non-asyncio) redis client,
@@ -41,19 +42,20 @@ def publish_document_status(owner_id:str,payload:dict) -> None:
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
         password=settings.REDIS_PASSWORD or None,
-        decode_responses=True
+        decode_responses=True,
     )
     try:
         client.publish(f"{DOCUMENT_STATUS_CHANNEL_PREFIX}{owner_id}",json.dumps(payload))
     finally:
         client.close()
+
 async def subscribe_document_status(owner_id:str) -> AsyncIterator[dict]:
     """
-        Async generator yielding decoded payloads published to this owner's
-        document-status channel. Used by document-service's WebSocket route -
-        one subscription per open WebSocket connection.
+    Async generator yielding decoded payloads published to this owner's
+    document-status channel. Used by document-service's WebSocket route -
+    one subscription per open WebSocket connection.
     """
-    client= get_redis()
+    client=get_redis()
     pubsub=client.pubsub()
     channel=f"{DOCUMENT_STATUS_CHANNEL_PREFIX}{owner_id}"
     await pubsub.subscribe(channel)
@@ -65,6 +67,7 @@ async def subscribe_document_status(owner_id:str) -> AsyncIterator[dict]:
     finally:
         await pubsub.unsubscribe(channel)
         await pubsub.aclose()
+
 class CacheClient:
     def __init__(self,prefix:str=CACHE_PREFIX):
         self._prefix=prefix

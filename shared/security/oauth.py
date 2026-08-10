@@ -16,23 +16,19 @@ class CurrentUser(BaseModel):
 
 def resolve_user_from_token(token:str) -> CurrentUser:
     """
-        Shared by both get_current_user() (HTTP, via the Authorization header)
-        and WebSocket routes (which authenticate via a ?token= query param
-        instead, since browsers' native WebSocket API can't set custom
-        headers like Authorization) - same validation, same CurrentUser shape,
-        just a different place the raw token string comes from.
+    Shared by both get_current_user() (HTTP, via the Authorization header)
+    and WebSocket routes (which authenticate via a ?token= query param
+    instead, since browsers' native WebSocket API can't set custom
+    headers like Authorization) - same validation, same CurrentUser shape,
+    just a different place the raw token string comes from.
     """
-    payload = decode_token(token,expected_type="access")
+    payload=decode_token(token,expected_type="access")
     sub=payload.get("sub")
     if not sub:
         raise UnauthorizedException("Token missing subject claim")
     return CurrentUser(id=UUID(sub),raw_claims=payload)
 
 def get_current_user(credentials:Annotated[HTTPAuthorizationCredentials,Depends(oauth_scheme)]) -> CurrentUser:
-    payload=decode_token(credentials.credentials,expected_type="access")
-    sub=payload.get("sub")
-    if not sub:
-        raise UnauthorizedException("Token missing subject claim")
-    return CurrentUser(id=UUID(sub),raw_claims=payload)
+    return resolve_user_from_token(credentials.credentials)
 
 CurrentUserDep=Annotated[CurrentUser,Depends(get_current_user)]
