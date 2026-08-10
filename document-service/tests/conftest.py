@@ -1,5 +1,5 @@
 import io 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 import pytest
 from fastapi import UploadFile
@@ -13,6 +13,20 @@ def fake_document_repository():
 @pytest.fixture
 def owner_id():
     return uuid4()
+
+@pytest.fixture
+def mock_worker_client():
+    """
+    Stands in for the shared httpx-backed ServiceClient DocumentService now
+    uses to call ai-worker-service's internal delete endpoint (see
+    app/core/lifespan.py - it's a single instance shared across requests,
+    not one DocumentService constructs itself).
+    """
+    client = MagicMock()
+    response = MagicMock()
+    response.json.return_value = {"deleted_chunks": 1}
+    client.delete = AsyncMock(return_value=response)
+    return client
 
 @pytest.fixture
 def pdf_upload_file():
