@@ -3,8 +3,10 @@ from pathlib import Path
 from uuid import UUID,uuid4
 
 from fastapi import UploadFile
+from shared.clients.service_client import ServiceClient
 from shared.config.settings import settings
 from shared.exceptions.exceptions import NotFoundException,ValidationException
+from shared.logger.logger import get_logger
 from shared.messaging.celery_app import celery_app
 from shared.schemas.events import TOPIC_DOCUMENT_UPLOADED
 
@@ -15,10 +17,12 @@ from app.utils.pdf_extractor import extract_text
 
 ALLOWED_CONTENT_TYPES={"application/pdf"}
 UPLOAD_DIR=Path(settings.UPLOAD_DIR)
+logger=get_logger(__name__)
 
 class DocumentService:
-    def __init__(self,document_repository:DocumentRepository):
+    def __init__(self,document_repository:DocumentRepository,worker_client:ServiceClient):
         self.document_repository = document_repository
+        self._worker_client=worker_client
         UPLOAD_DIR.mkdir(parents=True,exist_ok=True)
     async def upload(self, file:UploadFile,owner_id:UUID) -> Document:
         if file.content_type not in ALLOWED_CONTENT_TYPES:
@@ -64,3 +68,36 @@ class DocumentService:
         return document
     async def list_for_owner(self,owner_id:UUID) -> list[Document]:
         return await self.document_repository.list_by_owner(owner_id)
+
+    async def delete(self,document_id:UUID,owner_id:UUID) -> None:
+        document=await self.get(document_id,owner_id=owner_id)
+
+        # 1) Remove the vector store entries first. If ai-worker-service is
+        # unreachable, this raises (via ServiceClient's UpstreamServiceError)
+        # and we stop here - the document stays fully intact and visible,
+        # so the user can just retry, rather than disappearing from their
+        # list while its chunks remain silently searchable forever.
+        response=await self._worker_client.delete(
+            f"/api/v1/internal/documents/{document_id}",
+            params={"owner_id":str(owner_id)},
+        )
+        deleted_chunks=response.json().get("deleted_chunks",0)
+        if document.chunk_count and deleted_chunks != document.chunk_count:
+            logger.warning(
+                "chunk count mismatch on delete",
+                document_id=str(document_id),
+                expected=document.chunk_count,
+                deleted=deleted_chunks,
+            )
+
+        # 2) Remove the files on disk. Missing files (e.g. a document that
+        # failed before ever writing a chunks sidecar) are not an error -
+        # the goal is "make sure it's gone", not "prove it existed".
+        storage_path=Path(document.storage_path)
+        storage_path.unlink(missing_ok=True)
+        (UPLOAD_DIR / f"{document_id}.chunks.json").unlink(missing_ok=True)
+
+        # 3) Only now touch Postgres - by this point everything that could
+        # fail already has, so this is safe to do last.
+        document.is_deleted=True
+        await self.document_repository.update(document)

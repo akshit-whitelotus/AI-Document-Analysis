@@ -1,16 +1,19 @@
 import asyncio
-from fastapi import APIRouter,WebSocket,WebSocketDisconnect
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from shared.cache.redis_client import subscribe_document_status
 from shared.exceptions.exceptions import UnauthorizedException
 from shared.logger.logger import get_logger
 from shared.security.oauth import resolve_user_from_token
+
 from app.core.ws_manager import manager
 
 logger=get_logger(__name__)
 router=APIRouter()
 
+
 @router.websocket("/ws")
-async def document_status_ws(websocket: WebSocket, token:str | None=None):
+async def document_status_ws(websocket: WebSocket, token: str | None = None):
     """
     wss://.../api/v1/documents/ws?token=<jwt access token>
 
@@ -29,33 +32,41 @@ async def document_status_ws(websocket: WebSocket, token:str | None=None):
         await websocket.close(code=1008)
         return
     try:
-        user=resolve_user_from_token(token)
+        user = resolve_user_from_token(token)
     except UnauthorizedException:
         await websocket.close(code=1008)
         return
-    await  websocket.accept()
-    manager.connect(user.id,websocket)
+
+    await websocket.accept()
+    manager.connect(user.id, websocket)
 
     async def forward_status_updates():
         async for message in subscribe_document_status(str(user.id)):
             await websocket.send_json(message)
+
     async def watch_for_disconnect():
+        # This connection is push-only from the server's side - the client
+        # never sends anything meaningful - but we still need to actually
+        # await receive_text() so FastAPI/Starlette raises
+        # WebSocketDisconnect the moment the client goes away, rather than
+        # only finding out the next time we try to send() and fail.
         while True:
             await websocket.receive_text()
-    forward_task=asyncio.create_task(forward_status_updates())
-    disconnect_task=asyncio.create_task(watch_for_disconnect())
+
+    forward_task = asyncio.create_task(forward_status_updates())
+    disconnect_task = asyncio.create_task(watch_for_disconnect())
     try:
-        done,pending=await asyncio.wait(
-            {forward_task,disconnect_task},return_when=asyncio.FIRST_COMPLETED
+        done, pending = await asyncio.wait(
+            {forward_task, disconnect_task}, return_when=asyncio.FIRST_COMPLETED
         )
         for task in pending:
             task.cancel()
-        await asyncio.gather(*pending,return_exceptions=True)
+        await asyncio.gather(*pending, return_exceptions=True)
         for task in done:
             task.result()
     except WebSocketDisconnect:
         pass
     except Exception as exc:
-        logger.error("document_status_ws: error",owner_id=str(user.id),error=str(exc))
+        logger.error("document_status_ws: error", owner_id=str(user.id), error=str(exc))
     finally:
-        manager.disconnect(user.id,websocket)
+        manager.disconnect(user.id, websocket)
