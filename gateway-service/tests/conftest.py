@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock,MagicMock
+from contextlib import asynccontextmanager
 import pytest
 import httpx
 from app.main import app
@@ -23,6 +24,27 @@ def make_upstream_response(status_code: int = 200 , json_body: dict | None = Non
     request = httpx.Request("GET","http://upstream.test/")
     return httpx.Response(status_code,json=json_body if json_body is not None else {} , request=request)
 
+class _FakeStreamingUpstream:
+    """Stands in for the httpx.Response yielded by client.stream(...)."""
+    def __init__(self, chunks: list[bytes], status_code: int = 200):
+        self.status_code = status_code
+        self._chunks = chunks
+    async def aiter_bytes(self):
+        for chunk in self._chunks:
+            yield chunk
+
+def make_stream_client(chunks: list[bytes]):
+    """
+    A callable matching ServiceClient.stream()'s signature: NOT an async
+    function itself - it returns an async context manager synchronously,
+    the same way httpx.AsyncClient.stream() and our ServiceClient.stream()
+    passthrough both do.
+    """
+    @asynccontextmanager
+    async def _stream(method, url, **kwargs):
+        yield _FakeStreamingUpstream(chunks)
+    return MagicMock(side_effect=_stream)
+
 @pytest.fixture
 def mock_service_clients():
     """
@@ -36,6 +58,7 @@ def mock_service_clients():
         "document_client":MagicMock(request=AsyncMock(return_value=make_upstream_response())),
         "chat_client":MagicMock(request=AsyncMock(return_value=make_upstream_response()))
     }
+    clients["chat_client"].stream = make_stream_client([b'data: {"type": "sources", "sources": []}\n\n'])
     app.state.auth_client = clients["auth_client"]
     app.state.document_client = clients["document_client"]
     app.state.chat_client = clients["chat_client"]

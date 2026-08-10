@@ -1,8 +1,9 @@
 import json
+from unittest.mock import MagicMock
 import pytest
 from httpx import AsyncClient,ASGITransport
 from app.main import app
-from tests.conftest import make_upstream_response
+from tests.conftest import make_upstream_response, make_stream_client
 
 @pytest.mark.asyncio
 async def test_get_is_forwarded_to_auth_client_with_correct_path(mock_service_clients):
@@ -71,3 +72,91 @@ async def test_health_endpoint_does_not_touch_any_downstream_service(mock_servic
     mock_service_clients["auth_client"].request.assert_not_awaited()
     mock_service_clients["document_client"].request.assert_not_awaited()
     mock_service_clients["chat_client"].request.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_chat_query_stream_uses_the_streaming_client_not_the_buffered_one(mock_service_clients):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post("/api/v1/chat/query/stream", json={"question": "hi"})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    # The generic buffered path must never be used for this route - that
+    # would defeat the entire point (buffering the whole SSE response
+    # before returning it, instead of streaming bytes as they arrive).
+    mock_service_clients["chat_client"].request.assert_not_awaited()
+    mock_service_clients["chat_client"].stream.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_chat_query_stream_forwards_upstream_bytes_through_unchanged(mock_service_clients):
+    mock_service_clients["chat_client"].stream = make_stream_client([
+        b'data: {"type": "sources", "sources": []}\n\n',
+        b'data: {"type": "delta", "text": "Hello"}\n\n',
+        b'data: {"type": "done", "cached": false}\n\n',
+    ])
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post("/api/v1/chat/query/stream", json={"question": "hi"})
+
+    assert response.text == (
+        'data: {"type": "sources", "sources": []}\n\n'
+        'data: {"type": "delta", "text": "Hello"}\n\n'
+        'data: {"type": "done", "cached": false}\n\n'
+    )
+
+
+@pytest.mark.asyncio
+async def test_chat_query_stream_calls_the_correct_upstream_path(mock_service_clients):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        await ac.post("/api/v1/chat/query/stream", json={"question": "hi"})
+
+    args, kwargs = mock_service_clients["chat_client"].stream.call_args
+    assert args[0] == "POST"
+    assert args[1] == "/api/v1/chat/query/stream"
+
+
+@pytest.mark.asyncio
+async def test_chat_query_stream_uses_a_generous_read_timeout_not_the_default_15s():
+    """
+    Regression test for a real production incident: the shared 15s
+    HTTP_TIMEOUT_SECONDS default is fine for ordinary buffered requests,
+    but httpx's read timeout fires per SSE chunk, not for the whole
+    response - a >15s gap between chunks (e.g. Gemini's time-to-first-token)
+    is completely normal for a streaming LLM answer, not a hung connection.
+    Using the short default here killed legitimate in-progress streams with
+    httpx.ReadTimeout. This asserts the streaming call explicitly overrides
+    it with something much longer, rather than silently falling back to
+    the client's short default.
+    """
+    from shared.config.settings import settings
+
+    client = MagicMock()
+    client.stream = make_stream_client([b"data: {}\n\n"])
+    app.state.chat_client = client
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        await ac.post("/api/v1/chat/query/stream", json={"question": "hi"})
+
+    _, kwargs = client.stream.call_args
+    assert "timeout" in kwargs, "streaming call must explicitly override the timeout"
+    timeout = kwargs["timeout"]
+    assert timeout.read >= 60, f"read timeout ({timeout.read}s) is too short for an LLM stream"
+    assert timeout.read > settings.HTTP_TIMEOUT_SECONDS, (
+        "streaming read timeout must be longer than the default HTTP_TIMEOUT_SECONDS "
+        "used for ordinary buffered requests"
+    )
+
+
+@pytest.mark.asyncio
+async def test_regular_chat_query_still_uses_the_buffered_proxy_not_streaming(mock_service_clients):
+    """
+    Confirms the new static /chat/query/stream route registration didn't
+    accidentally break routing for the pre-existing /chat/query path -
+    that one should still go through the ordinary buffered proxy_chat().
+    """
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        await ac.post("/api/v1/chat/query", json={"question": "hi"})
+
+    mock_service_clients["chat_client"].request.assert_awaited_once()
+    mock_service_clients["chat_client"].stream.assert_not_called()
