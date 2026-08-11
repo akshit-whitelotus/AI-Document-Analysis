@@ -27,6 +27,17 @@ async def login(data:UserLogin,auth_service:AuthServiceDep):
 async def refresh(data:RefreshTokenRequest,auth_service:AuthServiceDep):
     return await auth_service.refresh(data.refresh_token)
 
+@router.post("/logout",status_code=status.HTTP_204_NO_CONTENT)
+async def logout(data:RefreshTokenRequest,auth_service:AuthServiceDep):
+    """
+    Revokes the given refresh token (see AuthService.logout /
+    TokenBlacklist) so it can't be used again to mint new access tokens.
+    Takes the refresh token in the body rather than requiring the access
+    token as auth, mirroring /refresh - possessing a valid, unexpired
+    refresh token is itself proof of ownership.
+    """
+    await auth_service.logout(data.refresh_token)
+
 @router.get("/me",response_model=UserResponse)
 async def me(current_user:CurrentUserDep,auth_service:AuthServiceDep):
     user=await auth_service.user_repository.get_by_id(current_user.id)
