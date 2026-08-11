@@ -1,8 +1,8 @@
-from shared.exceptions.exceptions import UnauthorizedException,ValidationException
+from shared.exceptions.exceptions import UnauthorizedException,ValidationException,NotFoundException
 from shared.security.hashing import hash_password,verify_password
 from shared.security.jwt import create_access_token,create_refresh_token,decode_token
 
-from app.models.user import User
+from app.models.user import User,Role
 from app.repositories.implementations.user_repository import UserRepository
 from app.schemas.token import Token
 from app.schemas.user import UserCreate,UserLogin
@@ -24,11 +24,22 @@ class AuthService:
             username=data.username,
             email=data.email,
             password_hash=hash_password(data.password),
-            role=data.role,
+            role=Role.USER,
             doc_id=data.doc_id,
             doc_type=data.doc_type,
         )
         return await self.user_repository.create(user)
+    async def set_role(self,user_id,role:Role) -> User:
+        """
+        Admin-only promotion/demotion path (see require_role("admin) guard
+        on the route). Never reachable from self-registration -role is
+        fixed to ROle.USER there.
+        """
+        user=await self.user_repository.get_by_id(user_id)
+        if not user:
+            raise NotFoundException("User not found")
+        return await self.user_repository.update_role(user,role)
+
     async def login(self,data:UserLogin) -> Token:
         user = await self.user_repository.get_by_email(data.email)
         if not user or not verify_password(data.password,user.password_hash):
