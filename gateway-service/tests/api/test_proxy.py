@@ -160,3 +160,48 @@ async def test_regular_chat_query_still_uses_the_buffered_proxy_not_streaming(mo
 
     mock_service_clients["chat_client"].request.assert_awaited_once()
     mock_service_clients["chat_client"].stream.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_document_upload_under_the_size_limit_is_forwarded(mock_service_clients, monkeypatch):
+    from app.api.v1 import proxy as proxy_module
+    monkeypatch.setattr(proxy_module.settings, "MAX_PDF_UPLOAD_SIZE_BYTES", 1000)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post("/api/v1/documents/", content=b"x" * 100)
+
+    assert response.status_code == 200
+    mock_service_clients["document_client"].request.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_document_upload_over_the_size_limit_is_rejected_with_413(mock_service_clients, monkeypatch):
+    """
+    The declared Content-Length alone exceeds the limit here, so this
+    should be rejected before any bytes are forwarded downstream at all.
+    """
+    from app.api.v1 import proxy as proxy_module
+    monkeypatch.setattr(proxy_module.settings, "MAX_PDF_UPLOAD_SIZE_BYTES", 1000)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post("/api/v1/documents/", content=b"x" * 5000)
+
+    assert response.status_code == 413
+    mock_service_clients["document_client"].request.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_other_proxies_are_not_affected_by_the_document_upload_size_limit(mock_service_clients, monkeypatch):
+    """
+    The size cap is scoped to proxy_documents specifically - auth and chat
+    payloads (which are never PDF uploads) must not be capped by the same
+    setting.
+    """
+    from app.api.v1 import proxy as proxy_module
+    monkeypatch.setattr(proxy_module.settings, "MAX_PDF_UPLOAD_SIZE_BYTES", 10)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post("/api/v1/auth/login", json={"email": "a@b.com", "password": "x" * 50})
+
+    assert response.status_code == 200
+    mock_service_clients["auth_client"].request.assert_awaited_once()
