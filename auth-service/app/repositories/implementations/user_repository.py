@@ -31,3 +31,8 @@ class UserRepository(
         return result.scalar_one_or_none()
     async def exists_by_doc_id(self,doc_id:str):
         return await self.get_by_doc_id(doc_id) is not None
+    async def update_role(self,user:User,role):
+        user.role = role
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user

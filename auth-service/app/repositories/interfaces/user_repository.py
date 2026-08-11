@@ -31,4 +31,8 @@ class IUserRepository(ABC):
     @abstractmethod
     async def exists_by_doc_id(self, doc_id:str):
             ...
+
+    @abstractmethod
+    async def update_role(self,user:User,role):
+         ...
         
