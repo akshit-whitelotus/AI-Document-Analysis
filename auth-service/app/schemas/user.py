@@ -18,8 +18,6 @@ class UserCreate(BaseSchema):
     username: str = Field(min_length=2,max_length=100,)
     email: EmailStr
     password: str = Field(min_length=8,max_length=128,)
-    doc_id:str=Field(min_length=2,max_length=100)
-    doc_type:DocType
 
 class RoleUpdateRequest(BaseSchema):
     role:Role
@@ -36,7 +34,5 @@ class UserResponse(BaseResponse):
     email: EmailStr
     is_active: bool
     role:Role
-    doc_id:str | None = None
-    doc_type:DocType | None=None
 
     
