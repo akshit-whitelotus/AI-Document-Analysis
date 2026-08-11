@@ -85,5 +85,5 @@ for _method in ("GET", "POST", "PUT", "DELETE"):
 # silently buffered by proxy_chat() instead of actually streaming.
 router.add_api_route("/chat/query/stream", proxy_chat_query_stream, methods=["POST"])
 
-for _method in ("GET", "POST"):
+for _method in ("GET", "POST","PUT"):
     router.add_api_route("/chat/{path:path}", proxy_chat, methods=[_method])
