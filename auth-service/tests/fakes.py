@@ -29,10 +29,4 @@ class FakeUserRepository:
         return next((u for u in self._by_id.values() if u.username == username), None)
     async def exists_by_username(self,username:str) -> bool:
         return any(u.username == username for u in self._by_id.values())
-
-    async def get_by_doc_id(self,doc_id:str):
-        return next((u for u in self._by_id.values() if u.doc_id == doc_id),None)
-    
-    async def exists_by_doc_id(self,doc_id:str) -> bool :
-        return any(u.doc_id == doc_id for u in self._by_id.values())
     
