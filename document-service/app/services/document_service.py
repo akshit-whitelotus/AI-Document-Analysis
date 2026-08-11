@@ -1,11 +1,11 @@
-import json,shutil
+import json
 from pathlib import Path
 from uuid import UUID,uuid4
 
 from fastapi import UploadFile
 from shared.clients.service_client import ServiceClient
 from shared.config.settings import settings
-from shared.exceptions.exceptions import NotFoundException,ValidationException
+from shared.exceptions.exceptions import NotFoundException,ValidationException,PayloadTooLargeException
 from shared.logger.logger import get_logger
 from shared.messaging.celery_app import celery_app
 from shared.schemas.events import TOPIC_DOCUMENT_UPLOADED
@@ -17,6 +17,8 @@ from app.utils.pdf_extractor import extract_text
 
 ALLOWED_CONTENT_TYPES={"application/pdf"}
 UPLOAD_DIR=Path(settings.UPLOAD_DIR)
+MAX_UPLOAD_SIZE_BYTES=settings.MAX_PDF_UPLOAD_SIZE_BYTES
+UPLOAD_READ_CHUNK_SIZE=1024*1024
 logger=get_logger(__name__)
 
 class DocumentService:
@@ -31,9 +33,29 @@ class DocumentService:
         document_id=uuid4()
         storage_path=UPLOAD_DIR / f"{document_id}.pdf"
 
-        with storage_path.open("wb") as out :
-            shutil.copyfileobj(file.file,out)
+        # Streamed in fixed-size chunks with a running total, rather than 
+        # `shutil.copyfileobj(file.file, out)` in one shot - that trusted
+        #  the client completely and would happily write an aribrately
+        #  large body straight to disk (and, upstream of this, the gateway
+        #  would have already tried to buffer the whole thing into memory -
+        #  see proxy_documents' _read_body_with_limit). Aborting mid-stream
+        #  here means an oversized file never fully lands on disk even if
+        #  it somehow got the past the gateway (e.g. document-service is called
+        #  directly, by passing the gateway.) 
 
+        total_bytes=0
+        try:
+            with storage_path.open("wb") as out:
+                while chunk:=await file.read(UPLOAD_READ_CHUNK_SIZE):
+                    total_bytes +=len(chunk)
+                    if total_bytes > MAX_UPLOAD_SIZE_BYTES:
+                        raise PayloadTooLargeException(
+                            f"PDF exceeds the {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB upload limit."
+                        )
+                    out.write(chunk)
+        except PayloadTooLargeException:
+            storage_path.unlink(missing_ok=True)
+            raise
         document=Document(
             id=document_id,
             owner_id=owner_id,
