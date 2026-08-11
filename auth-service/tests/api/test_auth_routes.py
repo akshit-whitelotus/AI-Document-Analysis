@@ -22,8 +22,6 @@ REGISTER_PAYLOAD ={
     "username":"ada",
     "email":"ada@example.com",
     "password":"supersecret123",
-    "doc_id":"doc-123",
-    "doc_type":"pdf"
 }
 
 @pytest.mark.asyncio
