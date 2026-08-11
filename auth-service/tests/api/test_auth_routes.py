@@ -4,14 +4,15 @@ from app.main import app
 from app.dependencies.repository import get_auth_service
 from app.services.auth_service import AuthService
 from shared.security.oauth import get_current_user,CurrentUser
-from tests.fakes import FakeUserRepository
+from tests.fakes import FakeUserRepository,FakeTokenBlacklist
 
 @pytest.fixture
 def client():
     shared_repo = FakeUserRepository()
+    shared_blacklist=FakeTokenBlacklist()
 
     def _get_auth_service_override():
-        return AuthService(shared_repo)
+        return AuthService(shared_repo,shared_blacklist)
     app.dependency_overrides[get_auth_service] = _get_auth_service_override
     yield AsyncClient(transport=ASGITransport(app=app),base_url="http://test")
     app.dependency_overrides.clear()
@@ -83,3 +84,44 @@ async def test_me_returns_current_user_when_authenticated(client):
         response=await ac.get("/api/v1/auth/me",headers={"Authorization":"Bearer whatever "})
     assert response.status_code == 200
     assert response.json()["id"] == user_id
+
+@pytest.mark.asyncio
+async def test_logged_out_returns_204(client):
+    async with client as ac:
+        await ac.post("/api/v1/auth/register",json=REGISTER_PAYLOAD)
+        login_response = await ac.post(
+            "/api/v1/auth/login",
+            json={"email":REGISTER_PAYLOAD["email"],"password":REGISTER_PAYLOAD["password"]}
+        )
+        refresh_token=login_response.json()["refresh_token"]
+        response=await ac.post("/api/v1/auth/logout",json={"refresh_token":refresh_token})
+    assert response.status_code == 204
+
+@pytest.mark.asyncio
+async def test_logged_out_refresh_token_cannot_be_reused(client):
+    async with client as ac:
+        await ac.post("/api/v1/auth/register",json=REGISTER_PAYLOAD)
+        login_response = await ac.post(
+            "/api/v1/auth/login",
+            json={"email":REGISTER_PAYLOAD["email"],"password":REGISTER_PAYLOAD["password"]}
+        )
+        refresh_token=login_response.json()["refresh_token"]
+        await ac.post("/api/v1/auth/logout",json={"refresh_token":refresh_token})
+        response=await ac.post("/api/v1/auth/refresh",json={"refresh_token":refresh_token})
+    assert response.status_code == 401
+
+@pytest.mark.asyncio
+async def test_refresh_rotates_and_rejects_reuse_of_old_token(client):
+    async with client as ac:
+        await ac.post("/api/v1/auth/register",json=REGISTER_PAYLOAD)
+        login_response = await ac.post(
+            "/api/v1/auth/login",
+            json={"email":REGISTER_PAYLOAD["email"],"password":REGISTER_PAYLOAD["password"]}
+        )
+        old_refresh_token=login_response.json()["refresh_token"]
+        first_refresh=await ac.post("/api/v1/auth/refresh",json={"refresh_token":old_refresh_token})
+        assert first_refresh.status_code == 200
+        assert first_refresh.json()["refresh_token"] != old_refresh_token
+
+        second_refresh= await ac.post("/api/v1/auth/refresh",json={"refresh_token":old_refresh_token})
+    assert second_refresh.status_code == 401
