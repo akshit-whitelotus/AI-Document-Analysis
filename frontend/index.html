@@ -397,17 +397,6 @@
           <label>Password</label>
           <input type="password" id="reg-password" class="input-field" required>
         </div>
-        <div class="form-group">
-          <label>Document ID</label>
-          <input type="text" id="reg-docid" class="input-field">
-        </div>
-        <div class="form-group">
-          <label>Document Type</label>
-          <select id="reg-doctype" class="select-field">
-            <option value="pdf">PDF</option>
-            <option value="txt">TXT</option>
-          </select>
-        </div>
         <button type="submit" class="btn" style="width: 100%; margin-top: 10px;">Register</button>
       </form>
     </div>
@@ -568,8 +557,6 @@
         username: document.getElementById("reg-username").value.trim(),
         email: document.getElementById("reg-email").value.trim(),
         password: document.getElementById("reg-password").value,
-        doc_id: document.getElementById("reg-docid").value.trim(),
-        doc_type: document.getElementById("reg-doctype").value
       };
 
       try {
