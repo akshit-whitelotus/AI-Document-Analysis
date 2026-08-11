@@ -27,7 +27,7 @@ def resolve_user_from_token(token:str) -> CurrentUser:
     sub=payload.get("sub")
     if not sub:
         raise UnauthorizedException("Token missing subject claim")
-    return CurrentUser(id=UUID(sub),raw_claims=payload)
+    return CurrentUser(id=UUID(sub),role=payload.get("role"),raw_claims=payload)
 
 def get_current_user(credentials:Annotated[HTTPAuthorizationCredentials,Depends(oauth_scheme)]) -> CurrentUser:
     return resolve_user_from_token(credentials.credentials)
