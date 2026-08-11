@@ -2,12 +2,12 @@ from typing import Annotated
 from uuid import UUID
 from fastapi import APIRouter ,Depends,status
 from shared.exceptions.exceptions import UnauthorizedException
-from shared.security.oauth import CurrentUserDep,AdminUserDep
+from shared.security.oauth import AdminUserDep,CurrentUserDep
 
 from app.dependencies.repository import get_auth_service
 from app.schemas.auth import RefreshTokenRequest
 from app.schemas.token import Token
-from app.schemas.user import UserCreate,UserLogin,UserResponse,RoleUpdateRequest
+from app.schemas.user import RoleUpdateRequest,UserCreate,UserLogin,UserResponse
 from app.services.auth_service import AuthService
 
 router=APIRouter()
@@ -46,11 +46,17 @@ async def me(current_user:CurrentUserDep,auth_service:AuthServiceDep):
     return user
 
 @router.patch("/users/{user_id}/role",response_model=UserResponse)
-async def update_user_role(user_id:UUID,data:RoleUpdateRequest,admin_user:AdminUserDep,auth_service:AuthServiceDep):
+async def update_user_role(
+    user_id:UUID,
+    data:RoleUpdateRequest,
+    admin_user:AdminUserDep,
+    auth_service:AuthServiceDep,
+):
     """
     Admin-only. Promotes or demotes a user's role. Guarded by AdminUserDep
-    (shared.security.oauth.require_role("admin)) - the caller's own JWT
-    must already carry role="admin", which is only ever set here or 
-    directly in the database ,never via self-registration
+    (shared.security.oauth.require_role("admin")) - the caller's own JWT
+    must already carry role="admin", which is only ever set here or
+    directly in the database, never via self-registration.
     """
     return await auth_service.set_role(user_id,data.role)
+
