@@ -51,6 +51,17 @@ class ServiceClient:
         return await self._request("PUT",url,**kwargs)
     async def delete(self,url:str,**kwargs:Any) -> httpx.Response:
         return await self._request("DELETE",url,**kwargs)
+    def stream(self,method:str,url:str,**kwargs:Any):
+        """
+        Returns httpx's own streaming async context manager directly (not
+        wrapped in async def - httpx.AsyncClient.stream() already returns
+        one synchronously). Deliberately bypasses _send()'s retry logic:
+        retrying a request that's already started streaming a partial
+        response to the caller isn't safe the way retrying a buffered
+        request is, so callers get httpx's exceptions directly here rather
+        than a wrapped UpstreamServiceError.
+        """
+        return self._client.stream(method,url,**kwargs)
     async def _request(self,method:str,url:str,**kwargs:Any) -> httpx.Response:
         try:
             return await self._send(method,url,**kwargs)
