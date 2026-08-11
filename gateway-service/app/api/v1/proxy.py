@@ -1,6 +1,9 @@
 from fastapi import APIRouter,Request,Response
 from fastapi.responses import StreamingResponse
 
+from shared.config.settings import settings
+from shared.exceptions.exceptions import PayloadTooLargeException
+
 
 router=APIRouter()
 
@@ -12,6 +15,36 @@ def _forward_headers(request:Request) -> dict:
         headers["content-type"] = content_type
     return headers
 
+async def _read_body_with_limit(request:Request,max_bytes:int) -> bytes:
+    """
+    Same end result as `await request.body()`, but never holds more than
+    max_bytes+1 chunk in memory - it aborts as soon as the running total
+    goes over the limit instead of buffering the whole thing first and
+    checking after. A Content-Length header over the limit is rejected
+    immediately without reading any body at all; a missing/understated
+    one (chunked transfer, or a client thaht just lies) is still caught by
+    the running total as bytes actually arrive.
+    """
+    content_length=request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > max_bytes:
+                raise PayloadTooLargeException(
+                    f"Upload exceeds the {max_bytes // (1024*1024)}MB limit for this endpoint"
+                )
+        except ValueError:
+            pass
+    chunks:list[bytes] =[]
+    total=0
+    async for chunk in request.stream():
+        total +=len(chunk)
+        if total > max_bytes:
+            raise PayloadTooLargeException(
+                f"Upload exceeds the {max_bytes // (1024*1024)}MB limit for this end point"
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
 async def proxy_auth(path:str,request:Request):
     client=request.app.state.auth_client
     body=await request.body()
@@ -22,7 +55,15 @@ async def proxy_auth(path:str,request:Request):
 
 async def proxy_documents(path:str,request:Request):
     client=request.app.state.document_client
-    body=await request.body()
+    # This is the PDF upload endpoint (POST /documents/) as well as
+    # get/list/delete (which have no body worth capping) - the limit only
+    # ever engages when there's actually a body large enough to matter.
+    # See shared.config.settings.MAX_PDF_UPLOAD_SIZE_BYTES; document-service
+    # enforces the same limit again independently in DocumentService.upload
+    # (defense-in-depth for anyone calling it directly, bypassing the
+    # gateway).
+    
+    body=await _read_body_with_limit(request,settings.MAX_PDF_UPLOAD_SIZE_BYTES)
     resp=await client.request (
         request.method, f"/api/v1/documents/{path}",content=body,headers=_forward_headers(request)
     )
