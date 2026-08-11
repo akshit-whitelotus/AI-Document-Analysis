@@ -29,4 +29,18 @@ class FakeUserRepository:
         return next((u for u in self._by_id.values() if u.username == username), None)
     async def exists_by_username(self,username:str) -> bool:
         return any(u.username == username for u in self._by_id.values())
-    
+class FakeTokenBlacklist:
+    """
+    In-memory stand-in for shared.cache.redis_client.TokenBlacklist - same
+    revoke()/is_revoked() interface, no real Redis connection, so unit
+    tests for refresh-token rotation/logout don't need Redis running
+    """
+    def __init__(self):
+        self._revoked:set[str] = set()
+
+    async def revoke(self,jti:str,ttl_seconds:int) -> None:
+        if ttl_seconds > 0:
+            self._revoked.add(jti)
+
+    async def is_revoked(self,jti:str) -> bool:
+        return jti in self._revoked
