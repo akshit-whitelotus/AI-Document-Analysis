@@ -28,10 +28,6 @@ class User(Base,UUIDMixin,TimestampMixin,SoftDeleteMixin,):
     is_active: Mapped[bool] = mapped_column(Boolean,default=True,)
     role:Mapped[Role]=mapped_column(Enum(Role,name="user_role",values_callable=lambda enum_cls: [e.value for e in enum_cls]),
                                    nullable=False,default=Role.USER,server_default=Role.USER.value,index=True)
-    
-    doc_id:Mapped[str | None]=mapped_column(String,nullable=True,unique=True,index=True)
-    doc_type:Mapped[DocType | None]=mapped_column(Enum(DocType,name="doc_type",values_callable=lambda enum_cls: [e.value for e in enum_cls]),
-                                                  nullable=True)
 
 
     
