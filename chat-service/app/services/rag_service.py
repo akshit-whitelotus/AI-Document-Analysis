@@ -8,6 +8,7 @@ from app.services.llm_client import GeminiClient,prompt_cache_key
 
 RESPONSE_CACHE_TTL_SECONDS=3600
 SESSION_TTL_SECONDS=60 * 60 * 24
+SESSION_DOCS_KEY_PREFIX="docs:"
 
 class RAGService:
     def __init__(self):
@@ -32,8 +33,28 @@ class RAGService:
         sources=[SourceChunk(**r) for r in results]
         context="\n\n".join(f"[{s.document_id}#{s.chunk_index}]{s.text}" for s in sources)
         return sources,context
+    async def set_session_documents(self,session_id:str,document_ids:list[str]) -> list[str]:
+        """Persists the multi-document scope for a session (owner isolation
+        is still enforced downstream in FaissStore.search - the list only
+        narrows within a user's own documents, never widens beyond it)."""
+        await self._sessions.set(f"{SESSION_DOCS_KEY_PREFIX}{session_id}",document_ids,ttl_seconds=SESSION_TTL_SECONDS)
+        return document_ids
+    async def get_session_documents(self,session_id:str) -> list[str] | None:
+        return await self._sessions.get(f"{SESSION_DOCS_KEY_PREFIX}{session_id}")
+
+    async def _resolve_document_scope(self,session_id:str,document_ids:list[str] | None) -> list[str] | None:
+        """Explicit per-request document_ids always win; otherwise fall
+        back to whatever scope was set for this session via 
+        set_session_documents(), if any. Returning NOne means "search
+        across all of the caller caller's documents", same as before this feature
+        existed - asession with no configured scope is unaffected.
+        """
+        if document_ids is not None:
+            return document_ids
+        return await self.get_session_documents(session_id)
 
     async def answer(self,session_id:str,question:str,top_k:int,owner_id:str,document_ids:list[str] | None=None) -> ChatQueryResponse:
+        document_ids=await self._resolve_document_scope(session_id,document_ids)
         sources,context=await self._search_and_build_context(question,top_k,owner_id,document_ids)
 
         # owner_id is salted into the cache key (via the question string) so
@@ -66,6 +87,7 @@ class RAGService:
         full answer has been assembled from the streamed deltas rather than
         all at once.
         """
+        document_ids=await self._resolve_document_scope(session_id,document_ids)
         sources,context=await self._search_and_build_context(question,top_k,owner_id,document_ids)
         yield {"type":"sources","sources":[s.model_dump() for s in sources]}
 
