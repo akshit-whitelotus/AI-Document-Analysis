@@ -398,13 +398,6 @@
           <input type="password" id="reg-password" class="input-field" required>
         </div>
         <div class="form-group">
-          <label>Role</label>
-          <select id="reg-role" class="select-field">
-            <option value="user" selected>User</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-        <div class="form-group">
           <label>Document ID</label>
           <input type="text" id="reg-docid" class="input-field">
         </div>
@@ -463,7 +456,12 @@
     let token = localStorage.getItem("access_token") || null;
     let selectedDocIds = new Set();
     let totalDocumentsCount = 0;
-    let sessionId = crypto.randomUUID();
+    let lastFetchedDocs = [];
+    // Persisted (not just per-page-load) so the session's saved document
+    // scope - see restoreSessionDocumentScope() / persistSessionDocumentScope()
+    // below - actually survives a reload instead of being pointless.
+    let sessionId = localStorage.getItem("chat_session_id") || crypto.randomUUID();
+    localStorage.setItem("chat_session_id", sessionId);
 
     // Initialization
     window.addEventListener("DOMContentLoaded", () => {
@@ -483,7 +481,7 @@
     function showMainScreen() {
       document.getElementById("auth-screen").classList.remove("active");
       document.getElementById("main-screen").classList.add("active");
-      fetchDocuments();
+      fetchDocuments().then(restoreSessionDocumentScope);
       connectDocumentStatusSocket();
     }
 
@@ -570,7 +568,6 @@
         username: document.getElementById("reg-username").value.trim(),
         email: document.getElementById("reg-email").value.trim(),
         password: document.getElementById("reg-password").value,
-        role: document.getElementById("reg-role").value,
         doc_id: document.getElementById("reg-docid").value.trim(),
         doc_type: document.getElementById("reg-doctype").value
       };
@@ -597,6 +594,8 @@
       token = null;
       localStorage.removeItem("access_token");
       selectedDocIds.clear();
+      sessionId = crypto.randomUUID();
+      localStorage.setItem("chat_session_id", sessionId);
       document.getElementById("chat-messages").innerHTML = "";
       disconnectDocumentStatusSocket();
       showAuthScreen();
@@ -610,6 +609,7 @@
 
       try {
         const docs = await apiFetch("/api/v1/documents/");
+        lastFetchedDocs = Array.isArray(docs) ? docs : [];
         renderDocumentList(docs);
       } catch (err) {
         docsError.innerText = err.detail || "Failed to load documents";
@@ -659,6 +659,7 @@
       hint.innerText = selectedDocIds.size === 0
         ? "Select a document to ask about"
         : `Searching: ${selectedDocIds.size} selected document${selectedDocIds.size > 1 ? "s" : ""}`;
+      persistSessionDocumentScope();
 
       await fetchDocuments();
     }
@@ -676,6 +677,46 @@
       } else {
         hint.innerText = `Searching: ${selectedDocIds.size} selected document${selectedDocIds.size > 1 ? 's' : ''}`;
       }
+
+      persistSessionDocumentScope();
+    }
+
+    // Multi-document session scope - lets this session's queries default to
+    // a fixed set of documents (via PUT/GET /chat/sessions/{id}/documents)
+    // without repeating document_ids on every message. Every /query call
+    // still sends the currently-checked document_ids explicitly (see
+    // streamChatQuery) - that always wins server-side - so this is purely
+    // about the scope surviving a page reload or a second tab, not about
+    // changing how an in-progress chat behaves.
+    async function persistSessionDocumentScope() {
+      try {
+        await apiFetch(`/api/v1/chat/sessions/${sessionId}/documents`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ document_ids: Array.from(selectedDocIds) })
+        });
+      } catch (err) {
+        // Non-fatal - the explicit document_ids sent with every query still
+        // work even if this background save failed, so just log it.
+        console.warn("Failed to save session document scope", err);
+      }
+    }
+
+    async function restoreSessionDocumentScope() {
+      let documentIds = [];
+      try {
+        const data = await apiFetch(`/api/v1/chat/sessions/${sessionId}/documents`);
+        documentIds = Array.isArray(data.document_ids) ? data.document_ids : [];
+      } catch (err) {
+        return; // nothing saved yet for this session, or the call failed - fine, start empty
+      }
+      if (documentIds.length === 0) return;
+
+      documentIds.forEach(id => selectedDocIds.add(id));
+      renderDocumentList(lastFetchedDocs);
+
+      const hint = document.getElementById("search-hint");
+      hint.innerText = `Searching: ${selectedDocIds.size} selected document${selectedDocIds.size > 1 ? 's' : ''}`;
     }
 
     let documentStatusSocket = null;
