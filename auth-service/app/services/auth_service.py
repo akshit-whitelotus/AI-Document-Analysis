@@ -16,8 +16,6 @@ class AuthService:
             raise ValidationException("A user with this email already exists")
         if await self.user_repository.exists_by_username(data.username):
             raise ValidationException("A user with this username already exists")
-        if data.doc_id and await self.user_repository.exists_by_doc_id(data.doc_id):
-            raise ValidationException("This doc_id is already linked to another user")
         user=User(
             first_name=data.first_name,
             last_name=data.last_name,
@@ -25,8 +23,6 @@ class AuthService:
             email=data.email,
             password_hash=hash_password(data.password),
             role=Role.USER,
-            doc_id=data.doc_id,
-            doc_type=data.doc_type,
         )
         return await self.user_repository.create(user)
     async def set_role(self,user_id,role:Role) -> User:
