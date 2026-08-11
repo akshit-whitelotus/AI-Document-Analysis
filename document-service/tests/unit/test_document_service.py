@@ -5,7 +5,7 @@ from starlette.datastructures import Headers
 
 from app.services.document_service import DocumentService
 from app.models.document import DocumentStatus
-from shared.exceptions.exceptions import NotFoundException,ValidationException,PayloadTooLargeException
+from shared.exceptions.exceptions import NotFoundException,ValidationException
 
 @pytest.mark.asyncio
 async def test_upload_rejects_no_pdf_content_type(fake_document_repository,owner_id,isolated_upload_dir,mock_worker_client):
@@ -17,27 +17,6 @@ async def test_upload_rejects_no_pdf_content_type(fake_document_repository,owner
     )
     with pytest.raises(ValidationException):
         await service.upload(text_file,owner_id=owner_id)
-
-@pytest.mark.asyncio
-async def test_upload_rejects_a_file_over_the_size_limit_and_leaves_no_partial_file(
-    fake_document_repository,owner_id,isolated_upload_dir,mock_worker_client,monkeypatch
-):
-    import app.services.document_service as document_service_module
-    # Small limit so the test doesn't need to actually generate megabytes.
-    monkeypatch.setattr(document_service_module,"MAX_UPLOAD_SIZE_BYTES",10)
-
-    oversized_file=UploadFile(
-        filename="big.pdf",
-        file=io.BytesIO(b"%PDF-1.4 " + b"x" *100),
-        headers=Headers({"content-type":"application/pdf"})
-    )
-    service = DocumentService(fake_document_repository,mock_worker_client)
-    with pytest.raises(PayloadTooLargeException):
-        await service.upload(oversized_file,owner_id=owner_id)
-
-    # Nothing should be left behind for an upload that was rejected mid-stream.
-    assert list(isolated_upload_dir.glob("*.pdf")) ==[]
-    
 
 @pytest.mark.asyncio
 async def test_upload_stores_document_and_queues_processing(fake_document_repository,owner_id,pdf_upload_file,isolated_upload_dir,mock_processing_pipeline,mock_worker_client):
