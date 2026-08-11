@@ -17,7 +17,7 @@ async def test_register_creates_user_with_hashed_password(fake_user_repository,v
 async def test_register_rejects_duplicate_email(fake_user_repository,valid_user_create):
     service = AuthService(fake_user_repository)
     await service.register(valid_user_create)
-    duplicate=valid_user_create.model_copy(update={"username":"someone_else","doc_id":"doc-999"})
+    duplicate=valid_user_create.model_copy(update={"username":"someone_else"})
     with pytest.raises(ValidationException):
         await service.register(duplicate)
 
@@ -26,7 +26,7 @@ async def test_register_rejects_duplicate_username(fake_user_repository,valid_us
     service=AuthService(fake_user_repository)
     await service.register(valid_user_create)
 
-    duplicate=valid_user_create.model_copy(update={"email":"other@example.com","doc_id":"doc-999"})
+    duplicate=valid_user_create.model_copy(update={"email":"other@example.com"})
 
     with pytest.raises(ValidationException):
         await service.register(duplicate)

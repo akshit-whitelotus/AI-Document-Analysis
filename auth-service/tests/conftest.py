@@ -15,8 +15,5 @@ def valid_user_create():
         username="ada",
         email="ada@example.com",
         password="supersecret123",
-        role=Role.USER,
-        doc_id="doc-123",
-        doc_type=DocType.PDF
     )
 
