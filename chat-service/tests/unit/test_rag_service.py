@@ -68,8 +68,8 @@ async def test_answer_appends_to_session_history(rag_service_with_mocked_depende
     await service.answer("session-1","A question",top_k=5,owner_id = "user-abc")
 
     service._sessions.set.assert_awaited_once()
-    session_id,history = service._sessions.set.call_args.args[:2]
-    assert session_id == "session-1"
+    key,history = service._sessions.set.call_args.args[:2]
+    assert key == "user-abc:session-1"
     assert history[-1] == {"question":"A question","answer":"This is the answer."}
 
 
@@ -123,3 +123,48 @@ async def test_answer_stream_appends_the_full_assembled_answer_to_session_histor
     service._sessions.set.assert_awaited_once()
     _, history = service._sessions.set.call_args.args[:2]
     assert history[-1] == {"question": "A question", "answer": "This is the answer."}
+
+
+class _InMemorySessions:
+    """A real (if tiny) key-value store, standing in for SessionStore, so
+    these two tests can prove actual cross-key isolation rather than just
+    asserting on a mock's call args."""
+    def __init__(self):
+        self._data = {}
+    async def get(self, key):
+        return self._data.get(key)
+    async def set(self, key, value, ttl_seconds=None):
+        self._data[key] = value
+
+
+@pytest.mark.asyncio
+async def test_two_users_with_the_same_session_id_get_independent_document_scopes(rag_service_with_mocked_dependencies):
+    """
+    Regression test: session_id is client-generated and not a secret (see
+    frontend/index.html - it's stored in localStorage), so two different
+    users could easily end up presenting the identical session_id string.
+    Their document scopes must never collide.
+    """
+    service = rag_service_with_mocked_dependencies
+    service._sessions = _InMemorySessions()
+
+    await service.set_session_documents("user-a", "shared-session-id", ["doc-a"])
+    await service.set_session_documents("user-b", "shared-session-id", ["doc-b"])
+
+    assert await service.get_session_documents("user-a", "shared-session-id") == ["doc-a"]
+    assert await service.get_session_documents("user-b", "shared-session-id") == ["doc-b"]
+
+
+@pytest.mark.asyncio
+async def test_two_users_with_the_same_session_id_get_independent_history(rag_service_with_mocked_dependencies):
+    service = rag_service_with_mocked_dependencies
+    service._sessions = _InMemorySessions()
+    service._worker_client.post.return_value = make_search_response([])
+
+    await service.answer("shared-session-id", "Alice's question", top_k=5, owner_id="user-a")
+    await service.answer("shared-session-id", "Bob's question", top_k=5, owner_id="user-b")
+
+    alice_history = await service._sessions.get(service._history_key("user-a", "shared-session-id"))
+    bob_history = await service._sessions.get(service._history_key("user-b", "shared-session-id"))
+    assert [h["question"] for h in alice_history] == ["Alice's question"]
+    assert [h["question"] for h in bob_history] == ["Bob's question"]

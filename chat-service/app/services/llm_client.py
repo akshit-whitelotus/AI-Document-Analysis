@@ -41,7 +41,18 @@ class GeminiClient:
         body={"contents":[{"parts": [{"text":prompt}]}]}
 
         response = await self._post_with_rate_limit_retry(url, body)
-        data = response.json()
+
+        # Gemini (or anything sitting in front of it - a proxy, a load
+        # balancer, a network-policy block) doesn't guarantee a JSON body
+        # on every response, especially error ones. generate_stream() below
+        # already accounts for this; this used to call response.json()
+        # unconditionally and let a plain-text error body raise an
+        # unhandled JSONDecodeError straight through to the caller as a
+        # raw 500, instead of the intended clean LLMError/502.
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
 
         if response.status_code == 429:
             raise LLMRateLimitedError(
@@ -50,6 +61,8 @@ class GeminiClient:
         if response.status_code >= 400:
             raise LLMError(f"Gemini API error {response.status_code}: {data}")
 
+        if not isinstance(data, dict):
+            raise LLMError(f"Unexpected Gemini response shape: {data}")
         try:
             return data["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError,IndexError) as exc:
