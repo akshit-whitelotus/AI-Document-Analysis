@@ -17,13 +17,13 @@ async def set_session_documents(session_id:str,body:SessionDocumentRequest,reque
     means that document silently never matches, nothing is leaked.
     """
     rag_service=request.app.state.rag_service
-    document_ids = await rag_service.set_session_documents(session_id,body.document_ids)
+    document_ids = await rag_service.set_session_documents(str(current_user.id),session_id,body.document_ids)
     return SessionDocumentResponse(session_id=session_id,document_ids=document_ids)
 
 @router.get("/sessions/{session_id}/documents",response_model=SessionDocumentResponse)
 async def get_session_documents(session_id:str,request:Request,current_user:CurrentUserDep):
     rag_service = request.app.state.rag_service
-    document_ids=await rag_service.get_session_documents(session_id) or []
+    document_ids=await rag_service.get_session_documents(str(current_user.id),session_id) or []
     return SessionDocumentResponse(session_id=session_id,document_ids=document_ids)
 @router.post("/query",response_model=ChatQueryResponse)
 async def query(request:Request,current_user:CurrentUserDep,body:ChatQueryRequest):
