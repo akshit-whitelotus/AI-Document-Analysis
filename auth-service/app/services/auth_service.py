@@ -74,7 +74,7 @@ class AuthService:
         lets someone stay logged in for days.
         """
         payload = decode_token(refresh_token,expected_type="refresh")
-        await self.token_blacklist.revoke(payload["jti"],remaining_ttl_seconds)
+        await self.token_blacklist.revoke(payload["jti"],remaining_ttl_seconds(payload))
 
     @staticmethod
     def _issue_tokens(user:User) -> Token:
