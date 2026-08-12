@@ -1,6 +1,6 @@
 from datetime import datetime,timedelta,UTC
 from typing import Any,Literal
-from uuid import UUID
+from uuid import UUID,uuid4
 
 from jose import JWTError,jwt
 
@@ -14,6 +14,10 @@ def _create_token(subject:str | UUID,expires_delta:timedelta,token_type:Literal[
     payload:dict[str,Any] = {
         "sub":str(subject),
         "type":token_type,
+        # Unique per token (not per user) - lets a single specific token be
+        # backlisted (e.g on logout, or on refresh-token rotation) without
+        # affecting any other token issued to the same user.
+        "jti":str(uuid4()),
         "iat":now,
         "exp":now + expires_delta
     }
@@ -41,3 +45,16 @@ def decode_token(token:str,expected_type:Literal["access","refresh"] | None=None
     if expected_type and payload.get("type") !=expected_type:
         raise UnauthorizedException(f"Expected a {expected_type} token")
     return payload
+
+def remaining_ttl_seconds(payload:dict[str,Any]) -> int:
+    """
+    Seconds left before this token's own `exp` claim makes it invalid
+    anyway. Used to size a blacklist entry's TTL - no point keeping a
+    revoked-token record around any longer than the token itself would
+    have been accepted for.
+    """
+    exp=payload.get("exp")
+    if not exp:
+        return 0
+    remaining=int(exp - datetime.now(UTC).timestamp())
+    return max(remaining,0)

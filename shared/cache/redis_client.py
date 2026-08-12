@@ -10,6 +10,7 @@ CACHE_PREFIX="cache:"
 SESSION_PREFIX="session:"
 RATELIMIT_PREFIX="ratelimit:"
 DOCUMENT_STATUS_CHANNEL_PREFIX="document_status:"
+TOKEN_BLACKLIST_PREFIX="token_blacklist:"
 
 @lru_cache
 def get_redis_pool() -> redis.ConnectionPool:
@@ -87,6 +88,26 @@ class CacheClient:
 class SessionStore(CacheClient):
     def __init__(self):
         super().__init__(prefix=SESSION_PREFIX)
+
+class TokenBlacklist(CacheClient):
+    """
+    Marks individual tokens (by their `jti` claim - see shared.security.jwt)
+    as revoked, e.g. on logout or when a refresh token is rotated. Each
+    entry's TTL matches the token's own remaining lifetime (see
+    shared.security.jwt.remaining_ttl_seconds), so Redis auto-cleans up
+    entries for tokens that would have expired naturally anyway - nothing
+    accumulates forever.
+    """
+    def __init__(self):
+        super().__init__(prefix=TOKEN_BLACKLIST_PREFIX)
+
+    async def revoke(self,jti:str,ttl_seconds:int) -> None:
+        if ttl_seconds <= 0:
+            return  # already expired on its own; nothing to blacklist
+        await self.set(jti,True,ttl_seconds=ttl_seconds)
+
+    async def is_revoked(self,jti:str) -> bool:
+        return await self.get(jti) is not None
 
 class RateLimiter:
     def __init__(self,limit:int,window_seconds:int):

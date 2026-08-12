@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     VECTOR_STORE_DIR:str="./vector_store"
     CHUNK_SIZE:int=800
     CHUNK_OVERLAP:int=100
+    # Enforced in both gateway-service (proxy_documents, before the body is 
+    # even fully read) and document-service (DocumentService.upload, as it
+    # streams to disk) - see the comments at each call site for why both
+    # layers check this rather than just one.
+    MAX_PDF_UPLOAD_SIZE_BYTES:int= 25*1024*1024 # 25 MB
+
 
     #Inter-service URLs (used by gateway-service's ServiceClient)
     AUTH_SERVICE_URL:str="http://localhost:8001"
