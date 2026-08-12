@@ -20,3 +20,6 @@ class ForbiddenException(AppException):
 
 class ConflictException(AppException):
     status_code=409
+    
+class PayloadTooLargeException(AppException):
+    status_code = 413
