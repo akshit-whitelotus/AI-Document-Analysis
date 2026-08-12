@@ -26,7 +26,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-
+  flower:
+    image: mher/flower
+    command: celery --broker=amqp://guest:guest@rabbitmq-celery:5673// flower --port=5555
+    ports: ["5555:5555"]
   redis:
     image: redis/redis-stack:7.4.0-v8
     container_name: ai-doc-redis
