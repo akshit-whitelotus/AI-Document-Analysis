@@ -6,5 +6,5 @@ router=APIRouter()
 async def health():
     return{
         "service":"auth-service",
-        "status":"haelthy"
+        "status":"healthy"
     }
