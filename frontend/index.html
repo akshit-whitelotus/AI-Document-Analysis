@@ -620,12 +620,13 @@
 
         const isChecked = selectedDocIds.has(doc.id);
         const status = (doc.status || "pending").toLowerCase();
+        const safeFilename = escapeHtml(doc.filename);
 
         item.innerHTML = `
           <input type="checkbox" value="${doc.id}" ${isChecked ? "checked" : ""} onchange="toggleDocSelection(this, '${doc.id}')">
-          <span class="doc-name" title="${doc.filename}">${doc.filename}</span>
+          <span class="doc-name" title="${safeFilename}">${safeFilename}</span>
           <span class="badge badge-${status}">${status}</span>
-          <button type="button" class="doc-delete-btn" title="Delete document" onclick="deleteDocument('${doc.id}', '${doc.filename.replace(/'/g, "&#39;")}')">&times;</button>
+          <button type="button" class="doc-delete-btn" title="Delete document" onclick="deleteDocument('${doc.id}', '${safeFilename.replace(/'/g, "&#39;")}')">&times;</button>
         `;
         container.appendChild(item);
       });
