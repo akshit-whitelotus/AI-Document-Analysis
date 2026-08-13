@@ -116,7 +116,7 @@ async def proxy_chat_query_stream(request:Request):
 # Sharing one route across methods made FastAPI generate a single operationId
 # for all of them, which is invalid OpenAPI and made Swagger UI's "Execute"
 # collapse onto whichever method won the collision (previously always PUT).
-for _method in ("GET", "POST", "PUT", "DELETE"):
+for _method in ("GET", "POST", "PATCH", "DELETE"):
     router.add_api_route("/auth/{path:path}", proxy_auth, methods=[_method])
     router.add_api_route("/documents/{path:path}", proxy_documents, methods=[_method])
 
