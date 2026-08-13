@@ -58,7 +58,15 @@ class Settings(BaseSettings):
 
     #Rate limiting
     RATE_LIMIT_PER_MINUTE:int = 60
-    
+
+    # CORS - comma-separated list of allowed origins. Deliberately NOT "*":
+    # combined with allow_credentials=True (needed for the Authorization
+    # header / bearer tokens the frontend sends), a wildcard origin makes
+    # CORSMiddleware reflect back whatever Origin the request came with,
+    # which lets any website make authenticated requests on a user's
+    # behalf. Keep this to the real, known frontend origin(s).
+    CORS_ORIGINS: str = "http://localhost:3000"
+
     # App
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
@@ -68,6 +76,10 @@ class Settings(BaseSettings):
         env_file=ENV_FILE,
         extra="ignore"
     )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
     @property
     def database_url(self) -> str:
