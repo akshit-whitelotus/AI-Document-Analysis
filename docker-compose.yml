@@ -115,20 +115,22 @@ services:
     container_name: ai-doc-auth-service
     restart: unless-stopped
     env_file: .env
+    ports:
+      - 8001:8001
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       RABBITMQ_HOST: rabbitmq-celery
     command: uvicorn app.main:app --app-dir auth-service --host 0.0.0.0 --port 8001
-    ports:
-      - "8001:8001"
+    # No host port mapping: only reachable via the internal docker network
+    # (i.e. through gateway-service), not directly from the host.
     depends_on:
       postgres:
         condition: service_healthy
       auth-migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "python", "-c" ,"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      test: ["CMD", "python", "-c" ,"import urllib.request; urllib.request.urlopen('http://localhost:8001/api/v1/health/')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -149,8 +151,8 @@ services:
       UPLOAD_DIR: /app/uploads
       VECTOR_STORE_DIR: /app/vector_store
     command: uvicorn app.main:app --app-dir document-service --host 0.0.0.0 --port 8002
-    ports:
-      - "8002:8002"
+    # No host port mapping: only reachable via the internal docker network
+    # (i.e. through gateway-service), not directly from the host.
     volumes:
       - uploads_data:/app/uploads
       - vector_store_data:/app/vector_store
@@ -162,7 +164,7 @@ services:
       rabbitmq-celery:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      test: ["CMD", "python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8002/api/v1/health/')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -184,13 +186,13 @@ services:
       DOCUMENT_SERVICE_URL: http://document-service:8002
       AI_WORKER_SERVICE_URL: http://ai-worker-service:8004
     command: uvicorn app.main:app --app-dir chat-service --host 0.0.0.0 --port 8003
-    ports:
-      - "8003:8003"
+    # No host port mapping: only reachable via the internal docker network
+    # (i.e. through gateway-service), not directly from the host.
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      test: ["CMD", "python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8003/api/v1/health/')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -210,8 +212,11 @@ services:
       UPLOAD_DIR: /app/uploads
       VECTOR_STORE_DIR: /app/vector_store
     command: uvicorn app.main:app --app-dir ai-worker-service --host 0.0.0.0 --port 8004
-    ports:
-      - "8004:8004"
+    # No host port mapping. This is the most important one to keep internal-
+    # only: its /internal/search and /internal/documents/{id} routes have no
+    # auth of their own and trust whatever owner_id the caller passes in -
+    # they rely entirely on only being reachable from other services on the
+    # docker network (document-service, chat-service), never from the host.
     volumes:
       - uploads_data:/app/uploads
       - vector_store_data:/app/vector_store
@@ -221,7 +226,7 @@ services:
       rabbitmq-celery:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
+      test: ["CMD", "python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8004/api/v1/health/')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -316,7 +321,7 @@ services:
       ai-worker-service:
         condition: service_started
     healthcheck:
-      test: ["CMD", "python","-c","import urllib; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/')"]
       interval: 10s
       timeout: 5s
       retries: 5
