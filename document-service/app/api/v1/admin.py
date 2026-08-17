@@ -47,7 +47,7 @@ def _get_queue_stats() -> dict:
         # doesn't exist yet (no task has ever been sent), this raises,
         # which is handled below as "0 pending".
         declared=channel.queue_declare(queue=DEFAULT_QUEUE_NAME,passive=True)
-        pending=declared.messgae_count
+        pending=declared.message_count
 
     inspector=celery_app.control.inspect(timeout=2.0)
     active=inspector.active() or {}
