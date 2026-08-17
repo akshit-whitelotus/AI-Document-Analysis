@@ -45,11 +45,25 @@ async def _read_body_with_limit(request:Request,max_bytes:int) -> bytes:
         chunks.append(chunk)
     return b"".join(chunks)
 
+def _upstream_path(prefix:str,path:str,request:Request) -> str:
+    """
+    Builds the upstream path AND forwards the original query string. Every 
+    proxy_* function previously dropped request.url.query entirely - a
+    client calling e.g GET /documents/?status=processed through the 
+    gateway would have that query string silently discarded before it ever 
+    reached document-service, since only `path` (never the query) fed into
+    the upstream URL.
+    """
+    upstream=f"/api/v1/{prefix}/{path}"
+    if request.url.query:
+        upstream=f"{upstream}?{request.url.query}"
+    return upstream
+
 async def proxy_auth(path:str,request:Request):
     client=request.app.state.auth_client
     body=await request.body()
     resp=await client.request(
-        request.method,f"/api/v1/auth/{path}",content=body,headers=_forward_headers(request)
+        request.method,_upstream_path("auth",path,request),content=body,headers=_forward_headers(request)
     )
     return Response(content=resp.content,status_code=resp.status_code,media_type="application/json")
 
@@ -65,7 +79,7 @@ async def proxy_documents(path:str,request:Request):
     
     body=await _read_body_with_limit(request,settings.MAX_PDF_UPLOAD_SIZE_BYTES)
     resp=await client.request (
-        request.method, f"/api/v1/documents/{path}",content=body,headers=_forward_headers(request)
+        request.method,_upstream_path("documents",path,request),content=body,headers=_forward_headers(request)
     )
     return Response(content=resp.content,status_code=resp.status_code,media_type="application/json")
 
@@ -73,7 +87,7 @@ async def proxy_chat(path:str ,request:Request):
     client=request.app.state.chat_client
     body=await request.body()
     resp=await client.request(
-        request.method,f"/api/v1/chat/{path}",content=body,headers=_forward_headers(request)
+        request.method,_upstream_path("chat",path,request),content=body,headers=_forward_headers(request)
     )
     return Response(content=resp.content,status_code=resp.status_code,media_type="application/json")
 
