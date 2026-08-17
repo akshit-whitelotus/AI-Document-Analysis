@@ -289,6 +289,11 @@
       margin-left: 6px;
     }
 
+    .stream-error {
+      color: #b91c1c;
+      white-space: pre-wrap;
+    }
+
     .sources-toggle {
       margin-top: 8px;
       font-size: 12px;
@@ -919,6 +924,16 @@
             renderStreamingSources(msgEl, event.sources);
           } else if (event.type === "done" && event.cached) {
             addCachedTag(textEl);
+          } else if (event.type === "error") {
+            // Backend hit a failure partway through generating the answer
+            // (e.g. the LLM provider errored) after already streaming some
+            // deltas - the stream still ends normally (see chat_query_route.py),
+            // this just surfaces what happened instead of leaving the
+            // partial answer looking silently finished/correct.
+            textEl.innerText = answerSoFar
+              ? answerSoFar + "\n\n⚠️ " + event.message
+              : "⚠️ " + event.message;
+            textEl.classList.add("stream-error");
           }
         }
         document.getElementById("chat-messages").scrollTop = document.getElementById("chat-messages").scrollHeight;
