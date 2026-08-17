@@ -70,6 +70,13 @@ class DocumentService:
             text,page_count=extract_text(str(storage_path))
             chunks=chunk_text(text)
         except Exception as exc:
+            # The PDF itself already landed on disk (the streamed write
+            # above succeeded) even though extraction failed - clean it up
+            # now rather than leaving it behind. A document a user never
+            # explicitly deletes would otherwise accumulate an orphaned 
+            # file forever, since nothing else ever revisits a FAILED
+            # document's storage_path
+            storage_path.unlink(missing_ok=True) 
             document.status=DocumentStatus.FAILED.value
             document.error_message=f"Failed to extract text: {exc}"
             return await self.document_repository.update(document)
@@ -82,6 +89,35 @@ class DocumentService:
         await self.document_repository.update(document)
         celery_app.send_task(TOPIC_DOCUMENT_UPLOADED,args=[str(document.id)])
         return document
+
+    async def admin_reprocess(self,document_id:UUID) -> Document:
+        """
+        Admin-only. Force-requeues a document for embedding regardless of
+        its current status or owner (unlike get()/delete() above, this
+        deliberately does not filter by owner_id - an admin neees to be
+        able to fix any user's stuck/failed document). Reuses the chunk 
+        sidecar file already written by upload() rather than reextracting
+        from PDF, so this is cheap and works the same way the normal 
+        pipeline does (process_document() in ai-worker-service reads that
+        same sidecar file and is itself idempotent - see tasks.py - so
+        re-running it here is always safe.)
+        """
+        document=await self.document_repository.get_by_id(document_id)
+        if not document or document.is_deleted:
+            raise NotFoundException("Document not found")
+
+        chunks_path=UPLOAD_DIR / f"{document_id}.chunks.json"
+        if not chunks_path.exists():
+            raise ValidationException(
+                "Cannot reprocess: original chunk data is no longer on disk "
+                "(the document may need to be re-uploaded)"
+            )
+        document.status=DocumentStatus.PENDING.value
+        document.error_message=None
+        document=await self.document_repository.update(document)
+        celery_app.send_task(TOPIC_DOCUMENT_UPLOADED,args=[str(document_id)])
+        return document
+    
 
     async def get(self,document_id:UUID,owner_id:UUID) -> Document:
         document=await self.document_repository.get_by_id(document_id)
