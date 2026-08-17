@@ -25,3 +25,11 @@ class SessionDocumentRequest(BaseSchema):
 class SessionDocumentResponse(BaseSchema):
     session_id:str
     document_ids:list[str]
+
+class ChatHistoryTurn(BaseSchema):
+    question:str
+    answer:str
+
+class ChatHistoryResponse(BaseSchema):
+    session_id:str
+    history:list[ChatHistoryTurn]
