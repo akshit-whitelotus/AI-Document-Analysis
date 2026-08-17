@@ -45,6 +45,15 @@ async def me(current_user:CurrentUserDep,auth_service:AuthServiceDep):
         raise UnauthorizedException("User no longer exists")
     return user
 
+@router.get("/users",response_model=list[UserResponse])
+async def list_users(admin_user:AdminUserDep,auth_service:AuthServiceDep):
+    """
+    Admin-only. Lists every registered account (including disabled ones- 
+    is_active is part of UserResponse, so an admin can tell disabled users
+    apart from active ones in the same list rather than needing a second
+    endpoint). Same AdminUserDep guard as the role-update route below.
+    """
+    return await auth_service.user_repository.list_all()
 @router.patch("/users/{user_id}/role",response_model=UserResponse)
 async def update_user_role(
     user_id:UUID,
