@@ -710,17 +710,37 @@
     let documentStatusSocket = null;
     let documentStatusReconnectTimer = null;
     let documentStatusReconnectDelay = 1000;
+    let documentStatusFailedAttempts = 0;
+
+    // REST polling fallback (GET /api/v1/documents/, see documents.py) for
+    // clients that can never hold the WebSocket open - a proxy that strips
+    // the Upgrade header, a network policy blocking ws://, etc. Rather than
+    // retrying the socket forever with no visible progress, give up on it
+    // after a few failed attempts and poll instead, so the document list
+    // still keeps itself current one way or another.
+    const DOCUMENT_STATUS_MAX_SOCKET_ATTEMPTS = 5;
+    const DOCUMENT_STATUS_POLL_INTERVAL_MS = 5000;
+    let documentStatusPollTimer = null;
 
     function connectDocumentStatusSocket() {
       if (!token) return;
       disconnectDocumentStatusSocket();
 
-      const wsBase = API_BASE.replace(/^http/, "ws");
-      const socket = new WebSocket(`${wsBase}/api/v1/documents/ws?token=${encodeURIComponent(token)}`);
+      let socket;
+      try {
+        const wsBase = API_BASE.replace(/^http/, "ws");
+        socket = new WebSocket(`${wsBase}/api/v1/documents/ws?token=${encodeURIComponent(token)}`);
+      } catch (err) {
+        // e.g. WebSocket isn't available at all in this environment.
+        startDocumentStatusPolling();
+        return;
+      }
       documentStatusSocket = socket;
 
       socket.onopen = () => {
         documentStatusReconnectDelay = 1000; // reset backoff on a healthy connection
+        documentStatusFailedAttempts = 0;
+        stopDocumentStatusPolling(); // a live socket takes over from polling
       };
 
       socket.onmessage = () => {
@@ -733,6 +753,12 @@
       socket.onclose = () => {
         if (documentStatusSocket !== socket) return; // a newer connection superseded this one
         if (!token) return; // logged out - don't reconnect
+        documentStatusFailedAttempts += 1;
+
+        if (documentStatusFailedAttempts >= DOCUMENT_STATUS_MAX_SOCKET_ATTEMPTS) {
+          startDocumentStatusPolling();
+          return;
+        }
         documentStatusReconnectTimer = setTimeout(() => {
           connectDocumentStatusSocket();
         }, documentStatusReconnectDelay);
@@ -740,8 +766,21 @@
       };
     }
 
+    function startDocumentStatusPolling() {
+      if (documentStatusPollTimer) return; // already polling
+      console.warn(`Document status WebSocket unavailable after ${DOCUMENT_STATUS_MAX_SOCKET_ATTEMPTS} attempts - falling back to polling ${DOCUMENT_STATUS_POLL_INTERVAL_MS}ms`);
+      documentStatusPollTimer = setInterval(fetchDocuments, DOCUMENT_STATUS_POLL_INTERVAL_MS);
+    }
+
+    function stopDocumentStatusPolling() {
+      clearInterval(documentStatusPollTimer);
+      documentStatusPollTimer = null;
+    }
+
     function disconnectDocumentStatusSocket() {
       clearTimeout(documentStatusReconnectTimer);
+      stopDocumentStatusPolling();
+      documentStatusFailedAttempts = 0;
       if (documentStatusSocket) {
         const socket = documentStatusSocket;
         documentStatusSocket = null;
