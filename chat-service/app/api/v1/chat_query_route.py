@@ -2,7 +2,13 @@ import json
 from fastapi import APIRouter,Request
 from fastapi.responses import StreamingResponse
 from app.api.deps import CurrentUserDep
-from app.schemas.chat_query import ChatQueryRequest , ChatQueryResponse,SessionDocumentRequest,SessionDocumentResponse
+from app.schemas.chat_query import (
+    ChatHistoryResponse,
+    ChatQueryRequest,
+    ChatQueryResponse,
+    SessionDocumentRequest,
+    SessionDocumentResponse,
+)
 
 router = APIRouter()
 
@@ -25,6 +31,21 @@ async def get_session_documents(session_id:str,request:Request,current_user:Curr
     rag_service = request.app.state.rag_service
     document_ids=await rag_service.get_session_documents(str(current_user.id),session_id) or []
     return SessionDocumentResponse(session_id=session_id,document_ids=document_ids)
+@router.get("/sessions/{session_id}/history",response_model=ChatHistoryResponse)
+async def get_chat_history(session_id:str,request:Request,current_user:CurrentUserDep):
+    """
+    Returns every question/answer turn recorded for this session so far
+    (see RAGService._append_history, called from both answer() and
+    answer_stream()). Keyed by (owner_id, session_id) the same way
+    set_session_documents()/get_session_documents() above are - a session_id
+    alone isn't a secret (it's client-generated and lives in localStorage),
+    so history is only ever readable by the user who owns it, scoped by
+    their verified JWT, never by session_id alone.
+    """
+    rag_service=request.app.state.rag_service
+    history=await rag_service.get_history(str(current_user.id),session_id)
+    return ChatHistoryResponse(session_id=session_id,history=history)
+
 @router.post("/query",response_model=ChatQueryResponse)
 async def query(request:Request,current_user:CurrentUserDep,body:ChatQueryRequest):
     rag_service=request.app.state.rag_service

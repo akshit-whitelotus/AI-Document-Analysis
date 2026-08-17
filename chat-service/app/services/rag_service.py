@@ -133,6 +133,18 @@ class RAGService:
         history.append({"question":question,"answer":answer})
         await self._sessions.set(key,history,ttl_seconds=SESSION_TTL_SECONDS)
 
+    async def get_history(self,owner_id:str,session_id:str) -> list[dict]:
+        """
+        Reads back what _append_history() above has been writing all
+        along - answer()/answer_stream() already persist every turn to
+        Redis (keyed by owner_id+session_id, same isolation reasoning as
+        _docs_key), but until now nothing ever read it back out. Returns
+        an empty list for a session with no history yet (new session, or
+        one that expired after SESSION_TTL_SECONDS of inactivity) rather
+        than raising - "no history" is a normal, expected state.
+        """
+        return await self._sessions.get(self._history_key(owner_id,session_id)) or []
+
     @staticmethod
     def _build_prompt(question:str,context:str) -> str:
         return(
