@@ -15,6 +15,6 @@ async def search(request:SearchRequest):
     # full duration, so no other request - including unrelated / health
     # checks - could be served concurrently on this process. run_in_threadpool
     # moves the blocking work onto a worker thread
-    query_vector=await run_in_threadpool(embed_query(request.query))
-    results=await run_in_threadpool(get_store().search(query_vector,owner_id=request.owner_id,top_k=request.top_k,document_ids=request.document_ids))
+    query_vector=await run_in_threadpool(embed_query,request.query)
+    results=await run_in_threadpool(get_store().search,query_vector,owner_id=request.owner_id,top_k=request.top_k,document_ids=request.document_ids)
     return SearchResponse(results=results)
