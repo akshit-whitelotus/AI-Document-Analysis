@@ -19,3 +19,11 @@ ai_document_analysis.egg-info
 ai-worker-service/celerybeat-schedule
 ai-worker-service/celerybeat-schedule-shm
 ai-worker-service/celerybeat-schedule-wal
+
+# Test suites are never imported at runtime by any service (each service's
+# `app/` code only imports from `app.`/`shared.`/third-party - verified
+# with a full-repo grep) - excluding them shrinks every build context
+# upload and keeps them out of every image, on top of what the Dockerfile's
+# per-service COPY (only `shared/` + one service's own directory) already
+# narrows out for the other four services' code.
+**/tests
