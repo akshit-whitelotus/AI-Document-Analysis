@@ -1,7 +1,6 @@
 import json
 from functools import lru_cache
-from typing import Any, AsyncIterator
-import redis as redis_sync
+from typing import Any
 import redis.asyncio as redis
 
 from shared.config.settings import settings
@@ -9,7 +8,6 @@ from shared.config.settings import settings
 CACHE_PREFIX="cache:"
 SESSION_PREFIX="session:"
 RATELIMIT_PREFIX="ratelimit:"
-DOCUMENT_STATUS_CHANNEL_PREFIX="document_status:"
 
 @lru_cache
 def get_redis_pool() -> redis.ConnectionPool:
@@ -23,50 +21,6 @@ def get_redis_pool() -> redis.ConnectionPool:
 
 def get_redis() -> redis.Redis:
     return redis.Redis(connection_pool=get_redis_pool())
-
-def publish_document_status(owner_id:str,payload:dict) -> None:
-    """
-    SYNC publish - deliberately uses the plain (non-asyncio) redis client,
-    because this is called from ai-worker-service's Celery task functions,
-    which are plain `def`, not `async def` (Celery's sync worker model, see
-    app/db/session.py using a sync SQLAlchemy session for the same reason).
-
-    Fire-and-forget: if no one is subscribed (e.g. the user has no
-    WebSocket connection open right now), the message is simply dropped -
-    Redis pub/sub has no durability or replay. That's fine here because
-    the document's real status is already persisted in Postgres; this
-    channel only exists so the frontend doesn't have to poll for it, not
-    as the source of truth.
-    """
-    client=redis_sync.Redis(
-        host=settings.REDIS_HOST,
-        port=settings.REDIS_PORT,
-        password=settings.REDIS_PASSWORD or None,
-        decode_responses=True,
-    )
-    try:
-        client.publish(f"{DOCUMENT_STATUS_CHANNEL_PREFIX}{owner_id}",json.dumps(payload))
-    finally:
-        client.close()
-
-async def subscribe_document_status(owner_id:str) -> AsyncIterator[dict]:
-    """
-    Async generator yielding decoded payloads published to this owner's
-    document-status channel. Used by document-service's WebSocket route -
-    one subscription per open WebSocket connection.
-    """
-    client=get_redis()
-    pubsub=client.pubsub()
-    channel=f"{DOCUMENT_STATUS_CHANNEL_PREFIX}{owner_id}"
-    await pubsub.subscribe(channel)
-    try:
-        async for message in pubsub.listen():
-            if message["type"] != "message":
-                continue
-            yield json.loads(message["data"])
-    finally:
-        await pubsub.unsubscribe(channel)
-        await pubsub.aclose()
 
 class CacheClient:
     def __init__(self,prefix:str=CACHE_PREFIX):

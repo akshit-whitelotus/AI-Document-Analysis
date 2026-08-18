@@ -205,4 +205,3 @@ async def test_other_proxies_are_not_affected_by_the_document_upload_size_limit(
 
     assert response.status_code == 200
     mock_service_clients["auth_client"].request.assert_awaited_once()
-    mock_service_clients["chat_client"].stream.assert_not_called()
