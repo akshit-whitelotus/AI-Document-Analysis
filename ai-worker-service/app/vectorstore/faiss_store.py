@@ -33,12 +33,23 @@ class FaissStore:
         return faiss.IndexIDMap(base)
     def _load_metadata(self) -> None:
         if METADATA_PATH.exists():
-            raw = json.loads(METADATA_PATH.read_text())
-            self._metadata={int(k):v for k,v in raw["metadata"].items()}
-            self._next_id=raw["next_id"]
+            try:
+                raw = json.loads(METADATA_PATH.read_text())
+                self._metadata={int(k):v for k,v in raw["metadata"].items()}
+                self._next_id=raw["next_id"]
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                # Corrupted metadata file - start fresh (vector_store will be stale
+                # but at least we can continue operations). Log this for debugging.
+                import warnings
+                warnings.warn(f"Corrupted metadata.json - starting fresh: {e}")
+                self._metadata={}
+                self._next_id=0
     def _save(self) -> None:
         faiss.write_index(self.index,str(INDEX_PATH))
-        METADATA_PATH.write_text(json.dumps({"metadata":self._metadata,"next_id":self._next_id}))
+        # Atomic write: write to temp file first, then rename to avoid corruption on concurrent writes
+        temp_path=METADATA_PATH.with_suffix('.tmp')
+        temp_path.write_text(json.dumps({"metadata":self._metadata,"next_id":self._next_id}))
+        temp_path.replace(METADATA_PATH)
         self._loaded_mtimes=(_mtime(INDEX_PATH),_mtime(METADATA_PATH))
     def _reload_if_stale(self) -> None:
         """
