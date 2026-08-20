@@ -1,1061 +1,1178 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Document Q&A System</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Document Analysis Platform</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            neutral: {
+              850: '#1f1f1f',
+              900: '#171717',
+              950: '#0d0d0d',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- React 18, React DOM, and Babel CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
   <style>
-    :root {
-      --bg: #f4f6f8;
-      --card-bg: #ffffff;
-      --border: #e2e8f0;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
-      --text-main: #1e293b;
-      --text-muted: #64748b;
-      --danger: #ef4444;
-      --success: #10b981;
-      --warning: #f59e0b;
-      --radius: 8px;
-      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--bg);
-      color: var(--text-main);
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* Common Components */
-    .btn {
-      background-color: var(--primary);
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: var(--radius);
-      font-weight: 500;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-
-    .btn:hover {
-      background-color: var(--primary-hover);
-    }
-
-    .btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .input-field, .select-field {
-      width: 100%;
-      padding: 8px 12px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      margin-bottom: 12px;
-      font-size: 14px;
-      outline: none;
-    }
-
-    .input-field:focus, .select-field:focus {
-      border-color: var(--primary);
-    }
-
-    .alert {
-      padding: 10px 14px;
-      border-radius: var(--radius);
-      margin-bottom: 16px;
-      font-size: 14px;
-      display: none;
-    }
-
-    .alert-danger {
-      background-color: #fef2f2;
-      color: var(--danger);
-      border: 1px solid #fecaca;
-    }
-
-    /* Screen Management */
-    .screen {
-      display: none;
-      height: 100vh;
-      width: 100vw;
-    }
-
-    .screen.active {
-      display: flex;
-    }
-
-    /* Auth Screen */
-    #auth-screen {
-      justify-content: center;
-      align-items: center;
-    }
-
-    .auth-card {
-      background: var(--card-bg);
-      border-radius: var(--radius);
-      padding: 32px;
-      width: 100%;
-      max-width: 420px;
-      box-shadow: var(--shadow);
-      border: 1px solid var(--border);
-    }
-
-    .auth-tabs {
-      display: flex;
-      margin-bottom: 20px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .auth-tab {
-      flex: 1;
-      padding: 10px;
-      text-align: center;
-      cursor: pointer;
-      font-weight: 600;
-      color: var(--text-muted);
-    }
-
-    .auth-tab.active {
-      color: var(--primary);
-      border-bottom: 2px solid var(--primary);
-    }
-
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .form-group label {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-muted);
-    }
-
-    /* Main Screen */
-    #main-screen {
-      flex-direction: column;
-    }
-
-    header {
-      background: var(--card-bg);
-      border-bottom: 1px solid var(--border);
-      padding: 12px 24px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .app-title {
-      font-weight: 700;
-      font-size: 18px;
-    }
-
-    .main-container {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
-
-    /* Left Column: Documents */
-    .docs-column {
-      width: 320px;
-      background: var(--card-bg);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      padding: 16px;
-    }
-
-    .section-header {
-      font-weight: 600;
-      margin-bottom: 12px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .search-hint {
-      font-size: 12px;
-      color: var(--text-muted);
-      background: #f1f5f9;
-      padding: 4px 8px;
-      border-radius: 4px;
-      margin-bottom: 12px;
-    }
-
-    .upload-box {
-      border: 1px dashed var(--border);
-      padding: 12px;
-      border-radius: var(--radius);
-      margin-bottom: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .doc-list {
-      flex: 1;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .doc-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      font-size: 13px;
-    }
-
-    .doc-name {
-      flex: 1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .badge {
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
-
-    .badge-completed, .badge-processed { background: #dcfce7; color: #15803d; }
-    .badge-pending, .badge-processing { background: #fef3c7; color: #b45309; }
-    .badge-failed { background: #fee2e2; color: #b91c1c; }
-
-    /* Right Column: Chat */
-    .chat-column {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      background: var(--bg);
-    }
-
-    .chat-messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .message {
-      max-width: 70%;
-      padding: 12px 16px;
-      border-radius: 12px;
-      font-size: 14px;
-      line-height: 1.5;
-    }
-
-    .message.user {
-      align-self: flex-end;
-      background: var(--primary);
-      color: white;
-      border-bottom-right-radius: 2px;
-    }
-
-    .message.assistant {
-      align-self: flex-start;
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      color: var(--text-main);
-      border-bottom-left-radius: 2px;
-    }
-
-    .cached-tag {
-      font-size: 11px;
-      color: #059669;
-      font-weight: bold;
-      margin-left: 6px;
-    }
-
-    .stream-error {
-      color: #b91c1c;
-      white-space: pre-wrap;
-    }
-
-    .sources-toggle {
-      margin-top: 8px;
-      font-size: 12px;
-      color: var(--primary);
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .sources-list {
-      margin-top: 6px;
-      padding-top: 6px;
-      border-top: 1px border var(--border);
-      font-size: 12px;
-      display: none;
-    }
-
-    .source-item {
-      background: #f8fafc;
-      padding: 6px;
-      border-radius: 4px;
-      margin-top: 4px;
-      border: 1px solid var(--border);
-    }
-
-    .chat-input-area {
-      background: var(--card-bg);
-      border-top: 1px solid var(--border);
-      padding: 16px 24px;
-      display: flex;
-      gap: 12px;
-    }
-
-    .chat-input-area input {
-      flex: 1;
-      margin-bottom: 0;
-    }
-
-    /* Typing Indicator */
-    .typing {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 12px 16px;
-    }
-
-    .dot {
+    /* Custom scrollbar styling for high-density SaaS look */
+    ::-webkit-scrollbar {
       width: 6px;
       height: 6px;
-      background: var(--text-muted);
-      border-radius: 50%;
-      animation: bounce 1.4s infinite ease-in-out both;
     }
-
-    .dot:nth-child(1) { animation-delay: -0.32s; }
-    .dot:nth-child(2) { animation-delay: -0.16s; }
-
-    @keyframes bounce {
-      0%, 80%, 100% { transform: scale(0); }
-      40% { transform: scale(1); }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(156, 163, 175, 0.3);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(156, 163, 175, 0.5);
     }
   </style>
 </head>
-<body>
+<body class="h-full bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased font-sans transition-colors duration-150">
+  <div id="root" class="h-full"></div>
 
-  <!-- Auth Screen -->
-  <div id="auth-screen" class="screen active">
-    <div class="auth-card">
-      <div id="auth-error" class="alert alert-danger"></div>
-      <div class="auth-tabs">
-        <div class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Login</div>
-        <div class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Register</div>
-      </div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
 
-      <!-- Login Form -->
-      <form id="form-login" onsubmit="handleLogin(event)">
-        <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="login-email" class="input-field" required>
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" id="login-password" class="input-field" required>
-        </div>
-        <button type="submit" class="btn" style="width: 100%; margin-top: 10px;">Sign In</button>
-      </form>
+    // CONFIGURATION
+    const API_BASE_URL = window.API_BASE_URL || 'http://localhost:8000/api/v1';
+    const WS_BASE_URL = window.WS_BASE_URL || 'ws://localhost:8000/api/v1';
 
-      <!-- Register Form -->
-      <form id="form-register" onsubmit="handleRegister(event)" style="display: none;">
-        <div class="form-group">
-          <label>First Name</label>
-          <input type="text" id="reg-fname" class="input-field" required>
-        </div>
-        <div class="form-group">
-          <label>Last Name</label>
-          <input type="text" id="reg-lname" class="input-field" required>
-        </div>
-        <div class="form-group">
-          <label>Username</label>
-          <input type="text" id="reg-username" class="input-field" required>
-        </div>
-        <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="reg-email" class="input-field" required>
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" id="reg-password" class="input-field" required>
-        </div>
-        <button type="submit" class="btn" style="width: 100%; margin-top: 10px;">Register</button>
-      </form>
-    </div>
-  </div>
+    // UTILS & STORAGE
+    const getToken = () => localStorage.getItem('access_token');
+    const getRefreshToken = () => localStorage.getItem('refresh_token');
+    const setTokens = (access, refresh) => {
+      localStorage.setItem('access_token', access);
+      localStorage.setItem('refresh_token', refresh);
+    };
+    const clearTokens = () => {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+    };
 
-  <!-- Main Screen -->
-  <div id="main-screen" class="screen">
-    <header>
-      <div class="app-title">AI Document Q&A</div>
-      <button class="btn" style="background-color: transparent; color: var(--text-muted); border: 1px solid var(--border);" onclick="logout()">Logout</button>
-    </header>
-
-    <div class="main-container">
-      <!-- Left Column: Documents -->
-      <div class="docs-column">
-        <div class="section-header">Your Documents</div>
-        <div class="search-hint" id="search-hint">Select a document to ask about</div>
-        
-        <div class="upload-box">
-          <input type="file" id="file-upload-input" style="font-size: 12px;">
-          <button class="btn" onclick="uploadDocument()">Upload File</button>
-        </div>
-
-        <div id="docs-error" class="alert alert-danger"></div>
-        <div class="doc-list" id="doc-list">
-          <!-- Documents populate here -->
-        </div>
-      </div>
-
-      <!-- Right Column: Chat -->
-      <div class="chat-column">
-        <div class="chat-messages" id="chat-messages">
-          <!-- Chat messages populate here -->
-        </div>
-
-        <form class="chat-input-area" onsubmit="handleSendQuery(event)">
-          <input type="text" id="chat-input" class="input-field" placeholder="Ask a question about your documents..." required autocomplete="off">
-          <button type="submit" class="btn" id="send-btn">Send</button>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    const API_BASE = "http://localhost:8000";
-    let token = localStorage.getItem("access_token") || null;
-    let selectedDocIds = new Set();
-    let totalDocumentsCount = 0;
-    let lastFetchedDocs = [];
-    // Persisted (not just per-page-load) so the session's saved document
-    // scope - see restoreSessionDocumentScope() / persistSessionDocumentScope()
-    // below - actually survives a reload instead of being pointless.
-    let sessionId = localStorage.getItem("chat_session_id") || crypto.randomUUID();
-    localStorage.setItem("chat_session_id", sessionId);
-
-    // Initialization
-    window.addEventListener("DOMContentLoaded", () => {
-      if (token) {
-        showMainScreen();
-      } else {
-        showAuthScreen();
+    // GENERATE OR RETRIEVE SESSION ID
+    const getSessionId = () => {
+      let sid = localStorage.getItem('chat_session_id');
+      if (!sid) {
+        sid = crypto.randomUUID ? crypto.randomUUID() : 'session_' + Math.random().toString(36).substring(2);
+        localStorage.setItem('chat_session_id', sid);
       }
-    });
+      return sid;
+    };
 
-    // Navigation & UI Switches
-    function showAuthScreen() {
-      document.getElementById("auth-screen").classList.add("active");
-      document.getElementById("main-screen").classList.remove("active");
-    }
+    // API CLIENT WITH AUTOMATIC REFRESH AND RETRY
+    async function apiFetch(endpoint, options = {}, isRetry = false) {
+      const token = getToken();
+      const headers = { ...options.headers };
 
-    function showMainScreen() {
-      document.getElementById("auth-screen").classList.remove("active");
-      document.getElementById("main-screen").classList.add("active");
-      fetchDocuments().then(restoreSessionDocumentScope);
-      connectDocumentStatusSocket();
-    }
-
-    function switchAuthTab(tab) {
-      clearAuthError();
-      document.getElementById("tab-login").classList.toggle("active", tab === 'login');
-      document.getElementById("tab-register").classList.toggle("active", tab === 'register');
-      document.getElementById("form-login").style.display = tab === 'login' ? 'block' : 'none';
-      document.getElementById("form-register").style.display = tab === 'register' ? 'block' : 'none';
-    }
-
-    function showAuthError(msg) {
-      const el = document.getElementById("auth-error");
-      el.innerText = msg;
-      el.style.display = "block";
-    }
-
-    function clearAuthError() {
-      const el = document.getElementById("auth-error");
-      el.innerText = "";
-      el.style.display = "none";
-    }
-
-    // Helper for API Calls
-    async function apiFetch(endpoint, options = {}) {
-      options.headers = options.headers || {};
-      if (token) {
-        options.headers["Authorization"] = `Bearer ${token}`;
+      if (token && !headers['Authorization']) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
 
-      try {
-        const response = await fetch(`${API_BASE}${endpoint}`, options);
-        
-        if (response.status === 401) {
-          logout("Session expired. Please log in again.");
-          throw new Error("Unauthorized");
-        }
-
-        const data = await response.json().catch(() => ({}));
-        
-        if (!response.ok) {
-          const detail = data.detail || data.message || `Error ${response.status}: Something went wrong`;
-          throw { status: response.status, detail: detail };
-        }
-
-        return data;
-      } catch (err) {
-        if (err.name === "TypeError" && err.message === "Failed to fetch") {
-          throw { detail: "Gateway unreachable at http://localhost:8000. Please check CORS or if the server is running." };
-        }
-        throw err;
-      }
-    }
-
-    // Auth Handlers
-    async function handleLogin(e) {
-      e.preventDefault();
-      clearAuthError();
-      const email = document.getElementById("login-email").value.trim();
-      const password = document.getElementById("login-password").value;
-
-      try {
-        const data = await apiFetch("/api/v1/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password })
-        });
-        
-        token = data.access_token;
-        localStorage.setItem("access_token", token);
-        showMainScreen();
-      } catch (err) {
-        showAuthError(err.detail || "Login failed");
-      }
-    }
-
-    async function handleRegister(e) {
-      e.preventDefault();
-      clearAuthError();
-      
-      const body = {
-        first_name: document.getElementById("reg-fname").value.trim(),
-        last_name: document.getElementById("reg-lname").value.trim(),
-        username: document.getElementById("reg-username").value.trim(),
-        email: document.getElementById("reg-email").value.trim(),
-        password: document.getElementById("reg-password").value,
-      };
-
-      try {
-        await apiFetch("/api/v1/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        });
-        
-        // Auto switch to login or auto login
-        switchAuthTab("login");
-        showAuthError("Registration successful. Please log in.");
-        document.getElementById("auth-error").className = "alert alert-danger"; // Reset styling if manipulated
-        document.getElementById("auth-error").style.color = "var(--success)";
-      } catch (err) {
-        document.getElementById("auth-error").style.color = "var(--danger)";
-        showAuthError(err.detail || "Registration failed");
-      }
-    }
-
-    function logout(reason) {
-      token = null;
-      localStorage.removeItem("access_token");
-      selectedDocIds.clear();
-      sessionId = crypto.randomUUID();
-      localStorage.setItem("chat_session_id", sessionId);
-      document.getElementById("chat-messages").innerHTML = "";
-      disconnectDocumentStatusSocket();
-      showAuthScreen();
-      if (reason) showAuthError(reason);
-    }
-
-    // Documents
-    async function fetchDocuments() {
-      const docsError = document.getElementById("docs-error");
-      docsError.style.display = "none";
-
-      try {
-        const docs = await apiFetch("/api/v1/documents/");
-        lastFetchedDocs = Array.isArray(docs) ? docs : [];
-        renderDocumentList(docs);
-      } catch (err) {
-        docsError.innerText = err.detail || "Failed to load documents";
-        docsError.style.display = "block";
-      }
-    }
-
-    function renderDocumentList(docs) {
-      const container = document.getElementById("doc-list");
-      container.innerHTML = "";
-      totalDocumentsCount = Array.isArray(docs) ? docs.length : 0;
-
-      if (!Array.isArray(docs) || docs.length === 0) {
-        container.innerHTML = `<div style="font-size:12px; color:var(--text-muted);">No documents uploaded yet.</div>`;
-        return;
+      if (options.body && !(options.body instanceof FormData) && !headers['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
       }
 
-      docs.forEach(doc => {
-        const item = document.createElement("div");
-        item.className = "doc-item";
-
-        const isChecked = selectedDocIds.has(doc.id);
-        const status = (doc.status || "pending").toLowerCase();
-        const safeFilename = escapeHtml(doc.filename);
-
-        item.innerHTML = `
-          <input type="checkbox" value="${doc.id}" ${isChecked ? "checked" : ""} onchange="toggleDocSelection(this, '${doc.id}')">
-          <span class="doc-name" title="${safeFilename}">${safeFilename}</span>
-          <span class="badge badge-${status}">${status}</span>
-          <button type="button" class="doc-delete-btn" title="Delete document" onclick="deleteDocument('${doc.id}', '${safeFilename.replace(/'/g, "&#39;")}')">&times;</button>
-        `;
-        container.appendChild(item);
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
       });
+
+      if (response.status === 401 && !isRetry) {
+        const refreshToken = getRefreshToken();
+        if (refreshToken) {
+          try {
+            const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refresh_token: refreshToken }),
+            });
+
+            if (refreshRes.ok) {
+              const data = await refreshRes.json();
+              setTokens(data.access_token, data.refresh_token);
+              // Retry original request
+              headers['Authorization'] = `Bearer ${data.access_token}`;
+              return fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+            }
+          } catch (e) {
+            console.error('Failed to refresh token:', e);
+          }
+        }
+        clearTokens();
+        window.dispatchEvent(new Event('auth-expired'));
+      }
+
+      return response;
     }
 
-    async function deleteDocument(id, filename) {
-      if (!confirm(`Delete "${filename}"? This cannot be undone.`)) return;
+    // MAIN APPLICATION COMPONENT
+    function App() {
+      const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+      const [user, setUser] = useState(null);
+      const [authLoading, setAuthLoading] = useState(true);
+      const [toast, setToast] = useState(null);
 
-      try {
-        await apiFetch(`/api/v1/documents/${id}`, { method: "DELETE" });
-      } catch (err) {
-        alert(err.detail || "Failed to delete document");
-        return;
-      }
+      // Apply theme
+      useEffect(() => {
+        if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+        localStorage.setItem('theme', theme);
+      }, [theme]);
 
-      selectedDocIds.delete(id);
-      const hint = document.getElementById("search-hint");
-      hint.innerText = selectedDocIds.size === 0
-        ? "Select a document to ask about"
-        : `Searching: ${selectedDocIds.size} selected document${selectedDocIds.size > 1 ? "s" : ""}`;
-      persistSessionDocumentScope();
+      const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
-      await fetchDocuments();
-    }
-
-    function toggleDocSelection(checkbox, id) {
-      if (checkbox.checked) {
-        selectedDocIds.add(id);
-      } else {
-        selectedDocIds.delete(id);
-      }
-
-      const hint = document.getElementById("search-hint");
-      if (selectedDocIds.size === 0) {
-        hint.innerText = "Select a document to ask about";
-      } else {
-        hint.innerText = `Searching: ${selectedDocIds.size} selected document${selectedDocIds.size > 1 ? 's' : ''}`;
-      }
-
-      persistSessionDocumentScope();
-    }
-
-    // Multi-document session scope - lets this session's queries default to
-    // a fixed set of documents (via PUT/GET /chat/sessions/{id}/documents)
-    // without repeating document_ids on every message. Every /query call
-    // still sends the currently-checked document_ids explicitly (see
-    // streamChatQuery) - that always wins server-side - so this is purely
-    // about the scope surviving a page reload or a second tab, not about
-    // changing how an in-progress chat behaves.
-    async function persistSessionDocumentScope() {
-      try {
-        await apiFetch(`/api/v1/chat/sessions/${sessionId}/documents`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ document_ids: Array.from(selectedDocIds) })
-        });
-      } catch (err) {
-        // Non-fatal - the explicit document_ids sent with every query still
-        // work even if this background save failed, so just log it.
-        console.warn("Failed to save session document scope", err);
-      }
-    }
-
-    async function restoreSessionDocumentScope() {
-      let documentIds = [];
-      try {
-        const data = await apiFetch(`/api/v1/chat/sessions/${sessionId}/documents`);
-        documentIds = Array.isArray(data.document_ids) ? data.document_ids : [];
-      } catch (err) {
-        return; // nothing saved yet for this session, or the call failed - fine, start empty
-      }
-      if (documentIds.length === 0) return;
-
-      documentIds.forEach(id => selectedDocIds.add(id));
-      renderDocumentList(lastFetchedDocs);
-
-      const hint = document.getElementById("search-hint");
-      hint.innerText = `Searching: ${selectedDocIds.size} selected document${selectedDocIds.size > 1 ? 's' : ''}`;
-    }
-
-    let documentStatusSocket = null;
-    let documentStatusReconnectTimer = null;
-    let documentStatusReconnectDelay = 1000;
-    let documentStatusFailedAttempts = 0;
-
-    // REST polling fallback (GET /api/v1/documents/, see documents.py) for
-    // clients that can never hold the WebSocket open - a proxy that strips
-    // the Upgrade header, a network policy blocking ws://, etc. Rather than
-    // retrying the socket forever with no visible progress, give up on it
-    // after a few failed attempts and poll instead, so the document list
-    // still keeps itself current one way or another.
-    const DOCUMENT_STATUS_MAX_SOCKET_ATTEMPTS = 5;
-    const DOCUMENT_STATUS_POLL_INTERVAL_MS = 5000;
-    let documentStatusPollTimer = null;
-
-    function connectDocumentStatusSocket() {
-      if (!token) return;
-      disconnectDocumentStatusSocket();
-
-      let socket;
-      try {
-        const wsBase = API_BASE.replace(/^http/, "ws");
-        socket = new WebSocket(`${wsBase}/api/v1/documents/ws?token=${encodeURIComponent(token)}`);
-      } catch (err) {
-        // e.g. WebSocket isn't available at all in this environment.
-        startDocumentStatusPolling();
-        return;
-      }
-      documentStatusSocket = socket;
-
-      socket.onopen = () => {
-        documentStatusReconnectDelay = 1000; // reset backoff on a healthy connection
-        documentStatusFailedAttempts = 0;
-        stopDocumentStatusPolling(); // a live socket takes over from polling
+      const showToast = (message, type = 'error') => {
+        setToast({ message, type });
       };
 
-      socket.onmessage = () => {
-        // Any status change for any of this user's documents - simplest
-        // correct behaviour is just to refresh the list, rather than
-        // trying to patch one row's badge in place.
-        fetchDocuments();
-      };
-
-      socket.onclose = () => {
-        if (documentStatusSocket !== socket) return; // a newer connection superseded this one
-        if (!token) return; // logged out - don't reconnect
-        documentStatusFailedAttempts += 1;
-
-        if (documentStatusFailedAttempts >= DOCUMENT_STATUS_MAX_SOCKET_ATTEMPTS) {
-          startDocumentStatusPolling();
+      // Load user profile on mount
+      const fetchProfile = useCallback(async () => {
+        if (!getToken()) {
+          setAuthLoading(false);
           return;
         }
-        documentStatusReconnectTimer = setTimeout(() => {
-          connectDocumentStatusSocket();
-        }, documentStatusReconnectDelay);
-        documentStatusReconnectDelay = Math.min(documentStatusReconnectDelay * 2, 30000);
+        try {
+          const res = await apiFetch('/auth/me');
+          if (res.ok) {
+            const data = await res.json();
+            setUser(data);
+          } else {
+            clearTokens();
+            setUser(null);
+          }
+        } catch (err) {
+          showToast('Network error while fetching profile');
+          clearTokens();
+          setUser(null);
+        } finally {
+          setAuthLoading(false);
+        }
+      }, []);
+
+      useEffect(() => {
+        fetchProfile();
+        const handleAuthExpired = () => {
+          setUser(null);
+          showToast('Session expired. Please log in again.', 'info');
+        };
+        window.addEventListener('auth-expired', handleAuthExpired);
+        return () => window.removeEventListener('auth-expired', handleAuthExpired);
+      }, [fetchProfile]);
+
+      const handleLogout = async () => {
+        try {
+          await apiFetch('/auth/logout', { method: 'POST' });
+        } catch (e) {
+          // ignore error
+        }
+        clearTokens();
+        setUser(null);
       };
-    }
 
-    function startDocumentStatusPolling() {
-      if (documentStatusPollTimer) return; // already polling
-      console.warn(`Document status WebSocket unavailable after ${DOCUMENT_STATUS_MAX_SOCKET_ATTEMPTS} attempts - falling back to polling ${DOCUMENT_STATUS_POLL_INTERVAL_MS}ms`);
-      documentStatusPollTimer = setInterval(fetchDocuments, DOCUMENT_STATUS_POLL_INTERVAL_MS);
-    }
-
-    function stopDocumentStatusPolling() {
-      clearInterval(documentStatusPollTimer);
-      documentStatusPollTimer = null;
-    }
-
-    function disconnectDocumentStatusSocket() {
-      clearTimeout(documentStatusReconnectTimer);
-      stopDocumentStatusPolling();
-      documentStatusFailedAttempts = 0;
-      if (documentStatusSocket) {
-        const socket = documentStatusSocket;
-        documentStatusSocket = null;
-        socket.close();
-      }
-    }
-
-    async function uploadDocument() {
-      const input = document.getElementById("file-upload-input");
-      if (!input.files || input.files.length === 0) return;
-
-      const formData = new FormData();
-      formData.append("file", input.files[0]);
-
-      try {
-        await apiFetch("/api/v1/documents/", {
-          method: "POST",
-          body: formData
-        });
-        
-        input.value = "";
-        fetchDocuments();
-        // Status updates now arrive in real time over the WebSocket
-        // connection (see connectDocumentStatusSocket) instead of being
-        // polled for - no fixed-count polling loop needed here anymore.
-
-      } catch (err) {
-        alert(err.detail || "File upload failed");
-      }
-    }
-
-    // Chat Functionality
-    async function handleSendQuery(e) {
-      e.preventDefault();
-      const input = document.getElementById("chat-input");
-      const question = input.value.trim();
-      if (!question) return;
-
-      // Render User Message
-      appendMessage("user", question);
-      input.value = "";
-
-      // Guard rails - never call the backend without a document actually
-      // selected. These two cases are deliberately distinct so the user
-      // knows whether they need to upload something or just pick one.
-      if (totalDocumentsCount === 0) {
-        appendMessage("assistant", "No document is uploaded. Please upload a document first.");
-        return;
-      }
-      if (selectedDocIds.size === 0) {
-        appendMessage("assistant", "Please select a document first.");
-        return;
-      }
-
-      // Render Typing Indicator
-      const typingId = appendTypingIndicator();
-
-      const docIdsArray = Array.from(selectedDocIds);
-
-      try {
-        await streamChatQuery(question, docIdsArray, typingId);
-      } catch (err) {
-        removeMessage(typingId);
-
-        let errorText = "Something went wrong answering that, please try again.";
-        if (err.status === 429) {
-          errorText = "I'm rate-limited right now, please try again in a moment.";
-        } else if (err.detail && err.status !== 500 && err.status !== 502) {
-          errorText = err.detail;
-        }
-
-        appendMessage("assistant", errorText);
-      }
-    }
-
-    // Streams /chat/query/stream via fetch()+ReadableStream rather than the
-    // EventSource API - EventSource can't send a custom Authorization
-    // header, and this app authenticates with a bearer token, not cookies.
-    async function streamChatQuery(question, docIdsArray, typingId) {
-      const headers = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const response = await fetch(`${API_BASE}/api/v1/chat/query/stream`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          session_id: sessionId,
-          question: question,
-          top_k: 5,
-          document_ids: docIdsArray
-        })
-      });
-
-      if (response.status === 401) {
-        logout("Session expired. Please log in again.");
-        throw { status: 401, detail: "Unauthorized" };
-      }
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw { status: response.status, detail: data.detail || data.message || `Error ${response.status}` };
-      }
-
-      removeMessage(typingId);
-
-      const { msgEl, textEl } = beginStreamingAssistantMessage();
-      let answerSoFar = "";
-      let buffer = "";
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        // SSE events are separated by a blank line; a chunk from the
-        // network may contain zero, one, or several complete events plus
-        // a trailing partial one, so keep the tail in buffer for next read.
-        const events = buffer.split("\n\n");
-        buffer = events.pop();
-
-        for (const rawEvent of events) {
-          const line = rawEvent.split("\n").find(l => l.startsWith("data: "));
-          if (!line) continue;
-          let event;
-          try {
-            event = JSON.parse(line.slice("data: ".length));
-          } catch {
-            continue;
-          }
-
-          if (event.type === "delta") {
-            answerSoFar += event.text;
-            textEl.innerText = answerSoFar;
-          } else if (event.type === "sources") {
-            renderStreamingSources(msgEl, event.sources);
-          } else if (event.type === "done" && event.cached) {
-            addCachedTag(textEl);
-          } else if (event.type === "error") {
-            // Backend hit a failure partway through generating the answer
-            // (e.g. the LLM provider errored) after already streaming some
-            // deltas - the stream still ends normally (see chat_query_route.py),
-            // this just surfaces what happened instead of leaving the
-            // partial answer looking silently finished/correct.
-            textEl.innerText = answerSoFar
-              ? answerSoFar + "\n\n⚠️ " + event.message
-              : "⚠️ " + event.message;
-            textEl.classList.add("stream-error");
-          }
-        }
-        document.getElementById("chat-messages").scrollTop = document.getElementById("chat-messages").scrollHeight;
-      }
-    }
-
-    function beginStreamingAssistantMessage() {
-      const container = document.getElementById("chat-messages");
-      const msgEl = document.createElement("div");
-      msgEl.className = "message assistant";
-      const textEl = document.createElement("div");
-      msgEl.appendChild(textEl);
-      container.appendChild(msgEl);
-      container.scrollTop = container.scrollHeight;
-      return { msgEl, textEl };
-    }
-
-    function addCachedTag(textEl) {
-      const tag = document.createElement("span");
-      tag.className = "cached-tag";
-      tag.innerText = "⚡ cached";
-      textEl.appendChild(tag);
-    }
-
-    function renderStreamingSources(msgEl, sources) {
-      if (!sources || sources.length === 0) return;
-      const sourcesId = "sources-" + Date.now();
-
-      const toggle = document.createElement("div");
-      toggle.className = "sources-toggle";
-      toggle.innerText = `Show Sources (${sources.length})`;
-      toggle.onclick = () => toggleSources(sourcesId);
-      msgEl.appendChild(toggle);
-
-      const list = document.createElement("div");
-      list.className = "sources-list";
-      list.id = sourcesId;
-      sources.forEach(src => {
-        const shortId = src.document_id ? src.document_id.substring(0, 8) : "doc";
-        const item = document.createElement("div");
-        item.className = "source-item";
-        item.innerHTML = `
-          <strong>[${shortId}...] Chunk ${src.chunk_index}</strong> (Score: ${src.score ? src.score.toFixed(2) : 'N/A'})
-          <div>"${escapeHtml(src.text)}"</div>
-        `;
-        list.appendChild(item);
-      });
-      msgEl.appendChild(list);
-    }
-
-    function appendMessage(role, text) {
-      const container = document.getElementById("chat-messages");
-      const msg = document.createElement("div");
-      msg.className = `message ${role}`;
-      msg.innerText = text;
-      container.appendChild(msg);
-      container.scrollTop = container.scrollHeight;
-      return msg;
-    }
-
-    function appendTypingIndicator() {
-      const container = document.getElementById("chat-messages");
-      const msg = document.createElement("div");
-      const id = "typing-" + Date.now();
-      msg.id = id;
-      msg.className = "message assistant typing";
-      msg.innerHTML = `<div class="dot"></div><div class="dot"></div><div class="dot"></div>`;
-      container.appendChild(msg);
-      container.scrollTop = container.scrollHeight;
-      return id;
-    }
-
-    function removeMessage(id) {
-      const el = document.getElementById(id);
-      if (el) el.remove();
-    }
-
-    function appendAssistantMessage(data) {
-      const container = document.getElementById("chat-messages");
-      const msg = document.createElement("div");
-      msg.className = "message assistant";
-
-      let html = `<div>${escapeHtml(data.answer)}`;
-      if (data.cached) {
-        html += `<span class="cached-tag">⚡ cached</span>`;
-      }
-      html += `</div>`;
-
-      if (data.sources && data.sources.length > 0) {
-        const sourcesId = "sources-" + Date.now();
-        html += `<div class="sources-toggle" onclick="toggleSources('${sourcesId}')">Show Sources (${data.sources.length})</div>`;
-        html += `<div class="sources-list" id="${sourcesId}">`;
-        
-        data.sources.forEach(src => {
-          const shortId = src.document_id ? src.document_id.substring(0, 8) : "doc";
-          html += `
-            <div class="source-item">
-              <strong>[${shortId}...] Chunk ${src.chunk_index}</strong> (Score: ${src.score ? src.score.toFixed(2) : 'N/A'})
-              <div>"${escapeHtml(src.text)}"</div>
+      if (authLoading) {
+        return (
+          <div className="flex h-screen w-screen items-center justify-center bg-neutral-950 text-neutral-400">
+            <div className="flex items-center space-x-2">
+              <svg className="animate-spin h-5 w-5 text-neutral-200" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+              <span>Loading workspace...</span>
             </div>
-          `;
-        });
-        
-        html += `</div>`;
+          </div>
+        );
       }
 
-      msg.innerHTML = html;
-      container.appendChild(msg);
-      container.scrollTop = container.scrollHeight;
+      return (
+        <div className="h-full flex flex-col">
+          {toast && (
+            <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded border text-xs font-medium shadow-lg transition-all flex items-center justify-between space-x-3 ${
+              toast.type === 'error' ? 'bg-red-950/90 text-red-200 border-red-800' : 'bg-neutral-900/90 text-neutral-200 border-neutral-700'
+            }`}>
+              <span>{toast.message}</span>
+              <button onClick={() => setToast(null)} className="text-neutral-400 hover:text-white">&times;</button>
+            </div>
+          )}
+
+          {!user ? (
+            <AuthScreen onAuthSuccess={() => fetchProfile()} showToast={showToast} />
+          ) : (
+            <MainDashboard user={user} onLogout={handleLogout} toggleTheme={toggleTheme} theme={theme} showToast={showToast} />
+          )}
+        </div>
+      );
     }
 
-    function toggleSources(id) {
-      const el = document.getElementById(id);
-      if (el) {
-        const isHidden = el.style.display === "" || el.style.display === "none";
-        el.style.display = isHidden ? "block" : "none";
-      }
+    // AUTH SCREEN (LOGIN & REGISTER)
+    function AuthScreen({ onAuthSuccess, showToast }) {
+      const [isLogin, setIsLogin] = useState(true);
+      const [formData, setFormData] = useState({
+        first_name: '',
+        last_name: '',
+        username: '',
+        email: '',
+        password: ''
+      });
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      const handleChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+      };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+
+        if (!isLogin && formData.password.length < 8) {
+          setError('Password must be at least 8 characters long');
+          return;
+        }
+
+        setLoading(true);
+
+        try {
+          if (isLogin) {
+            const res = await fetch(`${API_BASE_URL}/auth/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: formData.email, password: formData.password }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Invalid login credentials');
+            setTokens(data.access_token, data.refresh_token);
+            onAuthSuccess();
+          } else {
+            const res = await fetch(`${API_BASE_URL}/auth/register`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(formData),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Registration failed');
+            // Auto login after register
+            const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: formData.email, password: formData.password }),
+            });
+            const loginData = await loginRes.json();
+            if (loginRes.ok) {
+              setTokens(loginData.access_token, loginData.refresh_token);
+              onAuthSuccess();
+            } else {
+              setIsLogin(true);
+              showToast('Account created. Please log in.');
+            }
+          }
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="flex h-full items-center justify-center bg-neutral-100 dark:bg-neutral-950 px-4">
+          <div className="w-full max-w-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-6 shadow-sm">
+            <div className="mb-6">
+              <h1 className="text-xl font-semibold tracking-tight">AI Document Engine</h1>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                {isLogin ? 'Sign in to access document intelligent chat' : 'Create an account to start analyzing documents'}
+              </p>
+            </div>
+
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded text-xs text-red-600 dark:text-red-400">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+              {!isLogin && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-medium mb-1 text-neutral-700 dark:text-neutral-300">First Name</label>
+                      <input required name="first_name" value={formData.first_name} onChange={handleChange}
+                        className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded focus:outline-none focus:border-neutral-500 dark:focus:border-neutral-500" />
+                    </div>
+                    <div>
+                      <label className="block font-medium mb-1 text-neutral-700 dark:text-neutral-300">Last Name</label>
+                      <input required name="last_name" value={formData.last_name} onChange={handleChange}
+                        className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded focus:outline-none focus:border-neutral-500 dark:focus:border-neutral-500" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-medium mb-1 text-neutral-700 dark:text-neutral-300">Username</label>
+                    <input required name="username" value={formData.username} onChange={handleChange}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded focus:outline-none focus:border-neutral-500 dark:focus:border-neutral-500" />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="block font-medium mb-1 text-neutral-700 dark:text-neutral-300">Email Address</label>
+                <input required type="email" name="email" value={formData.email} onChange={handleChange}
+                  className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded focus:outline-none focus:border-neutral-500 dark:focus:border-neutral-500" />
+              </div>
+
+              <div>
+                <label className="block font-medium mb-1 text-neutral-700 dark:text-neutral-300">Password</label>
+                <input required type="password" name="password" value={formData.password} onChange={handleChange} placeholder={!isLogin ? "Min. 8 characters" : ""}
+                  className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded focus:outline-none focus:border-neutral-500 dark:focus:border-neutral-500" />
+              </div>
+
+              <button type="submit" disabled={loading}
+                className="w-full bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:hover:bg-neutral-200 text-white dark:text-neutral-900 font-medium py-2 px-4 rounded transition-colors disabled:opacity-50">
+                {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Create Account'}
+              </button>
+            </form>
+
+            <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-800 text-center text-xs text-neutral-500">
+              {isLogin ? "Don't have an account? " : "Already registered? "}
+              <button onClick={() => { setIsLogin(!isLogin); setError(''); }} className="text-neutral-900 dark:text-neutral-200 font-medium hover:underline">
+                {isLogin ? 'Register' : 'Sign in'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
     }
 
-    function escapeHtml(text) {
-      return text ? text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+    // MAIN DASHBOARD (LAYOUT + MANAGEMENT)
+    function MainDashboard({ user, onLogout, toggleTheme, theme, showToast }) {
+      const [documents, setDocuments] = useState([]);
+      const [documentsLoading, setDocumentsLoading] = useState(true);
+      const [sessionId, setSessionId] = useState(() => getSessionId());
+      const [selectedDocIds, setSelectedDocIds] = useState([]);
+      const [activeTab, setActiveTab] = useState('chat'); // Mobile tab toggle: 'documents' | 'chat' | 'admin'
+      const [isAdminViewOpen, setIsAdminViewOpen] = useState(false);
+
+      // Fetch Documents
+      const fetchDocuments = useCallback(async () => {
+        try {
+          const res = await apiFetch('/documents/');
+          if (res.ok) {
+            const data = await res.json();
+            // Sort newest first
+            data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            setDocuments(data);
+          }
+        } catch (err) {
+          showToast('Failed to load document library');
+        } finally {
+          setDocumentsLoading(false);
+        }
+      }, []);
+
+      // Realtime Status (WebSocket + Exponential Backoff Polling Fallback)
+      useEffect(() => {
+        fetchDocuments();
+
+        let ws = null;
+        let retryCount = 0;
+        let pollInterval = null;
+        let isComponentMounted = true;
+
+        const startPolling = () => {
+          if (!pollInterval && isComponentMounted) {
+            pollInterval = setInterval(() => {
+              fetchDocuments();
+            }, 5000);
+          }
+        };
+
+        const stopPolling = () => {
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        };
+
+        const connectWS = () => {
+          const token = getToken();
+          if (!token || retryCount >= 5) {
+            startPolling();
+            return;
+          }
+
+          ws = new WebSocket(`${WS_BASE_URL}/documents/ws?token=${token}`);
+
+          ws.onopen = () => {
+            retryCount = 0;
+            stopPolling();
+          };
+
+          ws.onmessage = () => {
+            fetchDocuments();
+          };
+
+          ws.onerror = () => {
+            ws.close();
+          };
+
+          ws.onclose = () => {
+            if (!isComponentMounted) return;
+            retryCount++;
+            if (retryCount >= 5) {
+              startPolling();
+            } else {
+              // Exponential backoff 1s, 2s, 4s, 8s, 16s (max 30s)
+              const timeout = Math.min(Math.pow(2, retryCount - 1) * 1000, 30000);
+              setTimeout(connectWS, timeout);
+            }
+          };
+        };
+
+        connectWS();
+
+        return () => {
+          isComponentMounted = false;
+          if (ws) ws.close();
+          stopPolling();
+        };
+      }, [fetchDocuments]);
+
+      // Load session document scope whenever sessionId changes
+      useEffect(() => {
+        const fetchSessionDocs = async () => {
+          try {
+            const res = await apiFetch(`/chat/sessions/${sessionId}/documents`);
+            if (res.ok) {
+              const data = await res.json();
+              setSelectedDocIds(data.document_ids || []);
+            }
+          } catch (e) {
+            // fallback gracefully
+          }
+        };
+        fetchSessionDocs();
+      }, [sessionId]);
+
+      // Update session document scope
+      const handleToggleDocScope = async (docId) => {
+        const newDocIds = selectedDocIds.includes(docId)
+          ? selectedDocIds.filter(id => id !== docId)
+          : [...selectedDocIds, docId];
+
+        setSelectedDocIds(newDocIds);
+
+        try {
+          await apiFetch(`/chat/sessions/${sessionId}/documents`, {
+            method: 'PUT',
+            body: JSON.stringify({ document_ids: newDocIds })
+          });
+        } catch (e) {
+          showToast('Failed to update session context scoping');
+        }
+      };
+
+      const handleStartNewSession = () => {
+        const newSid = crypto.randomUUID ? crypto.randomUUID() : 'session_' + Math.random().toString(36).substring(2);
+        localStorage.setItem('chat_session_id', newSid);
+        setSessionId(newSid);
+        setSelectedDocIds([]);
+      };
+
+      const handleDeleteDocument = async (docId) => {
+        if (!confirm('Are you sure you want to delete this document?')) return;
+        try {
+          const res = await apiFetch(`/documents/${docId}`, { method: 'DELETE' });
+          if (res.ok) {
+            setDocuments(prev => prev.filter(d => d.id !== docId));
+            if (selectedDocIds.includes(docId)) {
+              handleToggleDocScope(docId);
+            }
+          } else {
+            showToast('Failed to delete document');
+          }
+        } catch (e) {
+          showToast('Network error on delete request');
+        }
+      };
+
+      const handleReprocessDocument = async (docId) => {
+        try {
+          const res = await apiFetch(`/documents/admin/reprocess/${docId}`, { method: 'POST' });
+          if (res.ok) {
+            showToast('Document scheduled for reprocessing', 'info');
+            fetchDocuments();
+          } else {
+            showToast('Failed to trigger reprocessing');
+          }
+        } catch (e) {
+          showToast('Error sending reprocess command');
+        }
+      };
+
+      return (
+        <div className="flex flex-col h-full overflow-hidden">
+          {/* HEADER BAR */}
+          <header className="h-12 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 flex items-center justify-between shrink-0">
+            <div className="flex items-center space-x-3">
+              <span className="font-semibold text-sm tracking-tight">DocQuery AI</span>
+              <span className="text-xs px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500 font-mono">
+                {sessionId.slice(0, 8)}
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2 text-xs">
+              {user.role === 'admin' && (
+                <button
+                  onClick={() => setIsAdminViewOpen(!isAdminViewOpen)}
+                  className={`px-2.5 py-1 rounded transition-colors ${isAdminViewOpen ? 'bg-neutral-200 dark:bg-neutral-700 font-medium' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400'}`}
+                >
+                  Admin Portal
+                </button>
+              )}
+              <button onClick={toggleTheme} className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
+                {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+              </button>
+              <div className="h-4 w-[1px] bg-neutral-200 dark:bg-neutral-800"></div>
+              <span className="text-neutral-500 hidden sm:inline">{user.email}</span>
+              <button onClick={onLogout} className="text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 font-medium">
+                Logout
+              </button>
+            </div>
+          </header>
+
+          {/* MAIN TWO-PANE BODY */}
+          <div className="flex-1 flex overflow-hidden relative">
+            {isAdminViewOpen ? (
+              <AdminPanel onClose={() => setIsAdminViewOpen(false)} showToast={showToast} />
+            ) : (
+              <>
+                {/* LEFT SIDEBAR: DOCUMENTS */}
+                <div className={`w-full md:w-80 lg:w-96 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 flex flex-col shrink-0 ${activeTab === 'documents' ? 'flex' : 'hidden md:flex'}`}>
+                  <SidebarContent
+                    documents={documents}
+                    loading={documentsLoading}
+                    selectedDocIds={selectedDocIds}
+                    onToggleScope={handleToggleDocScope}
+                    onDelete={handleDeleteDocument}
+                    onReprocess={handleReprocessDocument}
+                    onUploadSuccess={fetchDocuments}
+                    userRole={user.role}
+                    showToast={showToast}
+                  />
+                </div>
+
+                {/* MAIN PANE: CHAT */}
+                <div className={`flex-1 bg-neutral-50 dark:bg-neutral-950 flex flex-col min-w-0 ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}`}>
+                  <ChatPane
+                    sessionId={sessionId}
+                    selectedDocIds={selectedDocIds}
+                    onNewSession={handleStartNewSession}
+                    showToast={showToast}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* MOBILE NAVIGATION BAR */}
+          {!isAdminViewOpen && (
+            <div className="md:hidden flex border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-xs">
+              <button
+                onClick={() => setActiveTab('documents')}
+                className={`flex-1 py-3 text-center font-medium ${activeTab === 'documents' ? 'text-neutral-900 dark:text-neutral-100 border-t-2 border-neutral-900 dark:border-neutral-100' : 'text-neutral-500'}`}
+              >
+                Documents ({documents.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('chat')}
+                className={`flex-1 py-3 text-center font-medium ${activeTab === 'chat' ? 'text-neutral-900 dark:text-neutral-100 border-t-2 border-neutral-900 dark:border-neutral-100' : 'text-neutral-500'}`}
+              >
+                Chat Workspace
+              </button>
+            </div>
+          )}
+        </div>
+      );
     }
+
+    // SIDEBAR: UPLOAD & DOCUMENT LIST
+    function SidebarContent({ documents, loading, selectedDocIds, onToggleScope, onDelete, onReprocess, onUploadSuccess, userRole, showToast }) {
+      const [isUploading, setIsUploading] = useState(false);
+      const [dragActive, setDragActive] = useState(false);
+      const fileInputRef = useRef(null);
+
+      const handleFiles = async (files) => {
+        if (!files || files.length === 0) return;
+        const file = files[0];
+
+        if (file.type !== 'application/pdf') {
+          showToast('Invalid file format. Only PDF files are allowed.');
+          return;
+        }
+
+        if (file.size > 25 * 1024 * 1024) {
+          showToast('File size exceeds the max limit of 25MB.');
+          return;
+        }
+
+        setIsUploading(true);
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+          const res = await apiFetch('/documents/', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (res.status === 201) {
+            onUploadSuccess();
+          } else {
+            const errData = await res.json();
+            showToast(errData.detail || errData.message || 'Upload rejected by server');
+          }
+        } catch (err) {
+          showToast('Network error during file upload');
+        } finally {
+          setIsUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+      };
+
+      return (
+        <div className="flex flex-col h-full">
+          {/* UPLOAD ZONE */}
+          <div className="p-4 border-b border-neutral-200 dark:border-neutral-800">
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={(e) => { e.preventDefault(); setDragActive(false); handleFiles(e.dataTransfer.files); }}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
+                dragActive ? 'border-neutral-500 bg-neutral-100 dark:bg-neutral-800' : 'border-neutral-300 dark:border-neutral-800 hover:border-neutral-400 dark:hover:border-neutral-700'
+              }`}
+            >
+              <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+              {isUploading ? (
+                <div className="flex items-center justify-center space-x-2 text-xs text-neutral-500">
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                  </svg>
+                  <span>Processing & uploading...</span>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                    Click to upload or drag PDF
+                  </div>
+                  <div className="text-[10px] text-neutral-400">PDF up to 25MB</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* DOCUMENT LIST */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div className="text-[11px] font-medium uppercase tracking-wider text-neutral-400 px-2 py-1 flex justify-between items-center">
+              <span>Library</span>
+              <span>{documents.length} files</span>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-8 text-xs text-neutral-400">Loading documents...</div>
+            ) : documents.length === 0 ? (
+              <div className="text-center py-8 px-4 text-xs text-neutral-500">
+                No documents uploaded yet. Add a PDF to begin workspace grounding.
+              </div>
+            ) : (
+              documents.map((doc) => (
+                <DocumentItem
+                  key={doc.id}
+                  doc={doc}
+                  isScoped={selectedDocIds.includes(doc.id)}
+                  onToggleScope={() => onToggleScope(doc.id)}
+                  onDelete={() => onDelete(doc.id)}
+                  onReprocess={() => onReprocess(doc.id)}
+                  userRole={userRole}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // DOCUMENT ITEM ROW COMPONENT
+    function DocumentItem({ doc, isScoped, onToggleScope, onDelete, onReprocess, userRole }) {
+      const getStatusBadge = (status) => {
+        switch (status) {
+          case 'processed':
+            return <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" title="Processed"></span>;
+          case 'processing':
+            return <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-ping" title="Processing"></span>;
+          case 'failed':
+            return <span className="inline-block w-2 h-2 rounded-full bg-red-500" title="Failed"></span>;
+          default:
+            return <span className="inline-block w-2 h-2 rounded-full bg-neutral-400" title="Pending"></span>;
+        }
+      };
+
+      return (
+        <div className={`group relative flex items-start space-x-3 p-2.5 rounded-lg border transition-colors ${
+          isScoped ? 'bg-neutral-100/80 dark:bg-neutral-800/60 border-neutral-300 dark:border-neutral-700' : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800'
+        }`}>
+          <input
+            type="checkbox"
+            checked={isScoped}
+            onChange={onToggleScope}
+            className="mt-1 rounded border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 focus:ring-0"
+            title="Scope chat query to this document"
+          />
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center space-x-2">
+              {getStatusBadge(doc.status)}
+              <span className="text-xs font-medium truncate text-neutral-800 dark:text-neutral-200" title={doc.filename}>
+                {doc.filename}
+              </span>
+            </div>
+
+            <div className="mt-1 flex items-center space-x-2 text-[10px] text-neutral-500">
+              {doc.page_count !== null && <span>{doc.page_count} pages</span>}
+              {doc.chunk_count !== null && <span>• {doc.chunk_count} chunks</span>}
+              <span className="capitalize">• {doc.status}</span>
+            </div>
+
+            {doc.status === 'failed' && doc.error_message && (
+              <div className="mt-1 text-[10px] text-red-500 truncate" title={doc.error_message}>
+                Error: {doc.error_message}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {doc.status === 'failed' && userRole === 'admin' && (
+              <button onClick={onReprocess} className="text-[10px] text-blue-500 hover:underline px-1 py-0.5">
+                Retry
+              </button>
+            )}
+            <button onClick={onDelete} className="text-neutral-400 hover:text-red-500 p-1 text-xs">
+              ✕
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // CHAT PANE
+    function ChatPane({ sessionId, selectedDocIds, onNewSession, showToast }) {
+      const [messages, setMessages] = useState([]);
+      const [loadingHistory, setLoadingHistory] = useState(true);
+      const [inputQuery, setInputQuery] = useState('');
+      const [isStreaming, setIsStreaming] = useState(false);
+      const messagesEndRef = useRef(null);
+
+      const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      };
+
+      // Load History on Session Change
+      useEffect(() => {
+        const fetchHistory = async () => {
+          setLoadingHistory(true);
+          try {
+            const res = await apiFetch(`/chat/sessions/${sessionId}/history`);
+            if (res.ok) {
+              const data = await res.json();
+              const formatted = [];
+              (data.history || []).forEach(item => {
+                formatted.push({ sender: 'user', text: item.question });
+                formatted.push({ sender: 'assistant', text: item.answer, sources: [], cached: false });
+              });
+              setMessages(formatted);
+            }
+          } catch (e) {
+            showToast('Failed to load query history');
+          } finally {
+            setLoadingHistory(false);
+          }
+        };
+
+        fetchHistory();
+      }, [sessionId]);
+
+      useEffect(() => {
+        scrollToBottom();
+      }, [messages, isStreaming]);
+
+      // Stream Submit Handling
+      const handleSend = async (e) => {
+        e?.preventDefault();
+        if (!inputQuery.trim() || isStreaming) return;
+
+        const question = inputQuery.trim();
+        setInputQuery('');
+
+        // Append user query and empty assistant placeholder
+        setMessages(prev => [
+          ...prev,
+          { sender: 'user', text: question },
+          { sender: 'assistant', text: '', sources: [], cached: false, isError: false }
+        ]);
+
+        setIsStreaming(true);
+
+        try {
+          const token = getToken();
+          const response = await fetch(`${API_BASE_URL}/chat/query/stream`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              session_id: sessionId,
+              question: question,
+              top_k: 5,
+              document_ids: selectedDocIds.length > 0 ? selectedDocIds : null
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP Error status: ${response.status}`);
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // keep last incomplete chunk
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('data:')) {
+                const jsonStr = trimmed.replace(/^data:\s*/, '');
+                if (!jsonStr) continue;
+
+                try {
+                  const data = JSON.parse(jsonStr);
+
+                  if (data.type === 'sources') {
+                    setMessages(prev => {
+                      const updated = [...prev];
+                      const last = updated[updated.length - 1];
+                      last.sources = data.sources || [];
+                      return updated;
+                    });
+                  } else if (data.type === 'delta') {
+                    setMessages(prev => {
+                      const updated = [...prev];
+                      const last = updated[updated.length - 1];
+                      last.text += data.text || '';
+                      return updated;
+                    });
+                  } else if (data.type === 'done') {
+                    setMessages(prev => {
+                      const updated = [...prev];
+                      const last = updated[updated.length - 1];
+                      last.cached = !!data.cached;
+                      return updated;
+                    });
+                  } else if (data.type === 'error') {
+                    setMessages(prev => {
+                      const updated = [...prev];
+                      const last = updated[updated.length - 1];
+                      last.text += `\n[Error: ${data.message}]`;
+                      last.isError = true;
+                      return updated;
+                    });
+                  }
+                } catch (e) {
+                  console.error('Failed to parse SSE JSON payload', e);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          setMessages(prev => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            last.text = `Error streaming response: ${err.message}`;
+            last.isError = true;
+            return updated;
+          });
+        } finally {
+          setIsStreaming(false);
+        }
+      };
+
+      const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          handleSend();
+        }
+      };
+
+      return (
+        <div className="flex flex-col h-full relative">
+          {/* TOP BAR / SCOPE SUMMARY */}
+          <div className="h-10 border-b border-neutral-200 dark:border-neutral-800 px-4 flex items-center justify-between bg-white dark:bg-neutral-900/30 text-xs">
+            <div className="text-neutral-500 truncate">
+              Context Scope: {selectedDocIds.length === 0 ? (
+                <span className="italic">All processed library documents</span>
+              ) : (
+                <span className="font-medium text-neutral-800 dark:text-neutral-200">{selectedDocIds.length} file(s) selected</span>
+              )}
+            </div>
+            <button
+              onClick={onNewSession}
+              className="text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 font-medium"
+            >
+              + New Session
+            </button>
+          </div>
+
+          {/* MESSAGES LIST */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {loadingHistory ? (
+              <div className="text-center py-12 text-xs text-neutral-400">Loading conversation history...</div>
+            ) : messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center py-12">
+                <div className="w-10 h-10 rounded-full bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center mb-3 text-neutral-500">
+                  💬
+                </div>
+                <div className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Document Intelligence Chat</div>
+                <div className="text-xs text-neutral-400 max-w-sm mt-1">
+                  Ask questions to query synthesized facts, grounded citations, and extract insights directly from your uploaded files.
+                </div>
+              </div>
+            ) : (
+              messages.map((msg, index) => (
+                <ChatMessage key={index} message={msg} />
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* CHAT INPUT AREA */}
+          <div className="p-4 border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+            <form onSubmit={handleSend} className="relative">
+              <textarea
+                value={inputQuery}
+                onChange={(e) => setInputQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask anything about your documents... (Press Enter to send, Shift+Enter for newline)"
+                rows={2}
+                disabled={isStreaming}
+                className="w-full pl-3 pr-12 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg text-xs focus:outline-none focus:border-neutral-500 dark:focus:border-neutral-500 resize-none"
+              />
+              <button
+                type="submit"
+                disabled={isStreaming || !inputQuery.trim()}
+                className="absolute right-2.5 bottom-3 px-3 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded text-xs font-medium disabled:opacity-30 transition-opacity"
+              >
+                {isStreaming ? '...' : 'Send'}
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // SINGLE CHAT MESSAGE BUBBLE & SOURCES
+    function ChatMessage({ message }) {
+      const isUser = message.sender === 'user';
+      const [showSources, setShowSources] = useState(false);
+
+      return (
+        <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+          <div className={`max-w-3xl rounded-lg px-4 py-3 text-xs leading-relaxed ${
+            isUser
+              ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+              : message.isError
+              ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400'
+              : 'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200 shadow-sm'
+          }`}>
+            <div className="whitespace-pre-wrap">{message.text || (!isUser && <span className="animate-pulse text-neutral-400">Thinking...</span>)}</div>
+
+            {message.cached && (
+              <span className="inline-block mt-2 text-[9px] uppercase px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500 font-mono">
+                Cached Answer
+              </span>
+            )}
+          </div>
+
+          {/* CITATION SOURCES */}
+          {!isUser && message.sources && message.sources.length > 0 && (
+            <div className="mt-1.5 max-w-3xl w-full">
+              <button
+                onClick={() => setShowSources(!showSources)}
+                className="text-[10px] text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-300 flex items-center space-x-1"
+              >
+                <span>{showSources ? '▼ Hide' : '▶ Show'} {message.sources.length} Grounded Sources</span>
+              </button>
+
+              {showSources && (
+                <div className="mt-2 space-y-1.5 pl-2 border-l-2 border-neutral-300 dark:border-neutral-700">
+                  {message.sources.map((src, i) => (
+                    <div key={i} className="text-[10px] bg-neutral-100 dark:bg-neutral-900/60 p-2 rounded border border-neutral-200 dark:border-neutral-800">
+                      <div className="font-mono text-neutral-500 flex justify-between mb-1">
+                        <span>Doc ID: {src.document_id.slice(0, 8)}... (Chunk #{src.chunk_index})</span>
+                        {src.score !== undefined && <span>Score: {Number(src.score).toFixed(3)}</span>}
+                      </div>
+                      <div className="text-neutral-700 dark:text-neutral-300 italic line-clamp-3 font-serif">
+                        "{src.text}"
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ADMIN PORTAL COMPONENT
+    function AdminPanel({ onClose, showToast }) {
+      const [users, setUsers] = useState([]);
+      const [queueStats, setQueueStats] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      const fetchAdminData = useCallback(async () => {
+        try {
+          const [usersRes, queueRes] = await Promise.all([
+            apiFetch('/auth/users'),
+            apiFetch('/documents/admin/queue')
+          ]);
+
+          if (usersRes.ok) setUsers(await usersRes.json());
+          if (queueRes.ok) setQueueStats(await queueRes.json());
+        } catch (e) {
+          showToast('Failed to load admin panel details');
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      useEffect(() => {
+        fetchAdminData();
+        const interval = setInterval(fetchAdminData, 10000); // Poll queue status every 10s
+        return () => clearInterval(interval);
+      }, [fetchAdminData]);
+
+      return (
+        <div className="flex-1 bg-white dark:bg-neutral-950 p-6 overflow-y-auto">
+          <div className="flex justify-between items-center mb-6 border-b border-neutral-200 dark:border-neutral-800 pb-4">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">Admin System Telemetry</h2>
+              <p className="text-xs text-neutral-500">Monitor queue metrics and inspect registered system users.</p>
+            </div>
+            <button onClick={onClose} className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 rounded text-xs hover:bg-neutral-200 dark:hover:bg-neutral-700">
+              Close Panel
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="text-xs text-neutral-400">Loading system metrics...</div>
+          ) : (
+            <div className="space-y-6">
+              {/* QUEUE METRICS */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-3">Processing Queue Status</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                    <div className="text-xs text-neutral-500">Pending Tasks</div>
+                    <div className="text-2xl font-bold mt-1">{queueStats?.pending_in_queue ?? 0}</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                    <div className="text-xs text-neutral-500">Active Tasks</div>
+                    <div className="text-2xl font-bold mt-1 text-blue-500">{queueStats?.active_tasks ?? 0}</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                    <div className="text-xs text-neutral-500">Reserved Tasks</div>
+                    <div className="text-2xl font-bold mt-1">{queueStats?.reserved_tasks ?? 0}</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                    <div className="text-xs text-neutral-500">Workers Online</div>
+                    <div className="text-2xl font-bold mt-1 text-emerald-500">
+                      {queueStats?.workers_online ? queueStats.workers_online.length : 0}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* USER MANAGEMENT */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-3">Registered Users</h3>
+                <div className="border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 text-neutral-500 font-medium">
+                      <tr>
+                        <th className="p-3">User</th>
+                        <th className="p-3">Email</th>
+                        <th className="p-3">Role</th>
+                        <th className="p-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                      {users.map((u) => (
+                        <tr key={u.id}>
+                          <td className="p-3 font-medium">{u.first_name} {u.last_name} ({u.username})</td>
+                          <td className="p-3 text-neutral-500">{u.email}</td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-mono ${u.role === 'admin' ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'}`}>
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <span className={u.is_active ? 'text-emerald-500' : 'text-neutral-400'}>
+                              {u.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // MOUNT APPLICATION
+    const rootElement = document.getElementById('root');
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(<App />);
   </script>
 </body>
 </html>
